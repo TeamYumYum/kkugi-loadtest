@@ -1,0 +1,4 @@
+locust==2.47.0
+pytest==8.4.2
+# Windows에는 시스템 시간대 DB가 없어 Asia/Seoul을 찾으려면 필요하다
+tzdata==2026.5
