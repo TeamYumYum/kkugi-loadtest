@@ -1,0 +1,48 @@
+# 발생기 기본 설정. 다른 파일을 쓰려면 KKUGI_CONFIG에 경로를 준다.
+# "가정"으로 적은 값은 확정 사양이 아니다. 실측이나 팀 합의가 나오면 바꾼다.
+# 비밀값(토큰, 비밀 헤더 값)은 이 파일에 쓰지 않는다.
+
+timezone = "Asia/Seoul"
+api_prefix = "/api/v1"
+
+[accounts]
+# 인공 계정 이메일은 {email_prefix}-{번호 5자리}@{email_domain}이다.
+# 확인 필요: 인공 사용자 전용 도메인은 팀에서 아직 정하지 않았다(synthetic-traffic.md 5장)
+email_prefix = "lt"
+email_domain = "synthetic.kkugi.test"
+# 계정별 프로필과 하루 메뉴를 뽑는 난수 시드. 바꾸면 모든 계정의 프로필이 바뀐다
+seed = 20261028
+
+[auth]
+# 지금은 dev 로그인(POST /auth/login/dev)만 지원한다. 운영 환경에서는 이 경로가 404다
+method = "dev"
+# 액세스 토큰 만료까지 남은 시간이 이보다 짧으면 요청 전에 재발급한다(초)
+refresh_margin_seconds = 120
+
+[synthetic]
+# 인공 요청 구분 헤더. 이름이 정해지지 않아 비워 둔다(synthetic-traffic.md 5장)
+header_name = ""
+header_value = "1"
+
+[think_time]
+# 사용자가 검색어를 입력하고 결과에서 음식을 고르는 시간(초). 가정
+search_min = 2.0
+search_max = 6.0
+select_min = 1.0
+select_max = 4.0
+
+[diet_lunch]
+# 점심 한 끼의 음식 수와 음식당 양(그램). 가정
+items = 2
+grams_min = 100
+grams_max = 300
+# 아침 식사 시각 범위와 점심 식사 시각 범위(한국 시간, "HH:MM"). 가정
+breakfast_from = "07:00"
+breakfast_to = "08:30"
+lunch_from = "11:40"
+lunch_to = "13:10"
+# 검색어 후보. 공식 음식 목록 seed에서 결과가 나오는 것을 확인한 단어다(2026-10-28)
+breakfast_keywords = ["오트밀", "요거트", "바나나", "사과", "토스트", "달걀", "고구마", "우유"]
+lunch_keywords = ["김밥", "비빔밥", "샐러드", "닭가슴살", "된장찌개", "김치찌개", "현미밥", "두부", "샌드위치", "제육볶음"]
+# 계정마다 lunch_keywords에서 뽑아 두는 선호 음식 수
+preferred_lunch_keywords = 4
