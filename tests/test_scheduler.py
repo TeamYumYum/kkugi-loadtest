@@ -1,6 +1,7 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from kkugi_load import config as config_module
+from kkugi_load.config import Pool
 from kkugi_load.personas import PERSONAS, build_account
 from kkugi_load.scheduler import IMMEDIATE, REALTIME, Due, Missed, Scheduler
 
@@ -108,3 +109,12 @@ def test_realtime_plans_next_day_after_midnight():
     scheduler.next()
     tomorrow = PERSONAS[account.persona].plan_day(CONFIG, account, DAY + timedelta(days=1))
     assert scheduler.pending() == len(tomorrow)
+
+
+def test_pool_hours_limit_planned_sessions():
+    accounts = _active_accounts(5)
+    lunch_only = Pool("peak", 0, 5, ((time(11, 30), time(13, 30)),))
+    clock = Clock(datetime.combine(DAY, datetime.min.time(), TZ))
+    scheduler = Scheduler(CONFIG, accounts, IMMEDIATE, LATENESS, clock, lunch_only)
+    items = _drain(scheduler)
+    assert items and all(i.planned.name == "dieter_lunch" for i in items)

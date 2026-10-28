@@ -19,6 +19,24 @@ DEFAULT_STATE_DB = ROOT / "state" / "accounts.db"
 
 
 @dataclass(frozen=True)
+class Pool:
+    """Worker 하나가 맡는 계정 번호 범위 [start, start + count)."""
+
+    name: str
+    start: int
+    count: int
+    # 이 시간대(시작, 끝)에 계획된 세션만 실행한다. 비어 있으면 하루 전체
+    only_between: tuple[tuple[time, time], ...]
+
+    @property
+    def end(self) -> int:
+        return self.start + self.count
+
+    def allows(self, at: time) -> bool:
+        return not self.only_between or any(start <= at < end for start, end in self.only_between)
+
+
+@dataclass(frozen=True)
 class Config:
     tz: ZoneInfo
     api_prefix: str
@@ -34,9 +52,7 @@ class Config:
     max_lateness: timedelta
     # 페르소나 이름 → [personas.<이름>] 표
     personas: dict[str, dict[str, Any]]
-    # 이 프로세스가 맡는 계정 번호 범위 [account_start, account_start + account_count)
-    account_start: int
-    account_count: int
+    pool: Pool
     state_db: Path
 
 
@@ -64,9 +80,20 @@ def load(env: dict[str, str] | None = None) -> Config:
     if not personas or sum(float(p["weight"]) for p in personas.values()) <= 0:
         raise ValueError("[personas]에 weight가 양수인 페르소나가 하나 이상 있어야 한다")
 
-    account_count = int(env.get("KKUGI_ACCOUNT_COUNT", "1"))
-    if account_count < 1:
-        raise ValueError("KKUGI_ACCOUNT_COUNT는 1 이상이어야 한다")
+    pool_name = env.get("KKUGI_POOL", "base")
+    pools = raw.get("pools") or {}
+    if pool_name not in pools:
+        raise ValueError(f"설정에 없는 계정 풀: {pool_name}")
+    pool_raw = pools[pool_name]
+    # 로컬 검증용으로 풀의 범위를 덮어쓸 수 있다
+    pool = Pool(
+        name=pool_name,
+        start=int(env.get("KKUGI_ACCOUNT_START", pool_raw["start"])),
+        count=int(env.get("KKUGI_ACCOUNT_COUNT", pool_raw["count"])),
+        only_between=tuple((hhmm(a), hhmm(b)) for a, b in pool_raw.get("only_between", [])),
+    )
+    if pool.start < 0 or pool.count < 1:
+        raise ValueError(f"계정 풀 {pool_name}의 범위가 잘못됨: start={pool.start}, count={pool.count}")
 
     return Config(
         tz=ZoneInfo(raw["timezone"]),
@@ -81,7 +108,6 @@ def load(env: dict[str, str] | None = None) -> Config:
         schedule_mode=env.get("KKUGI_SCHEDULE", "realtime"),
         max_lateness=timedelta(minutes=float(raw["schedule"]["max_lateness_minutes"])),
         personas=personas,
-        account_start=int(env.get("KKUGI_ACCOUNT_START", "0")),
-        account_count=account_count,
+        pool=pool,
         state_db=Path(env.get("KKUGI_STATE_DB") or DEFAULT_STATE_DB),
     )

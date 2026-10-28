@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from kkugi_load.accounts.identity import Account
-from kkugi_load.config import Config
+from kkugi_load.config import Config, Pool
 from kkugi_load.personas import PERSONAS
 from kkugi_load.personas.base import PlannedSession
 
@@ -52,7 +52,7 @@ class Missed:
 class Scheduler:
     def __init__(
         self, config: Config, accounts: list[Account], mode: str, max_lateness: timedelta,
-        now: Callable[[], datetime],
+        now: Callable[[], datetime], pool: Pool | None = None,
     ):
         if mode not in (REALTIME, IMMEDIATE):
             raise ValueError(f"알 수 없는 일정 방식: {mode}")
@@ -61,6 +61,7 @@ class Scheduler:
         self.mode = mode
         self.max_lateness = max_lateness
         self.now = now
+        self.pool = pool
         self._heap: list[_Entry] = []
         self._seq = itertools.count()
         self._busy: set[int] = set()
@@ -76,6 +77,8 @@ class Scheduler:
         planned_count, dropped = 0, 0
         for account in self.accounts:
             for planned in PERSONAS[account.persona].plan_day(self.config, account, day):
+                if self.pool and not self.pool.allows(planned.at.time()):
+                    continue
                 if self.mode == REALTIME and planned.at < now - self.max_lateness:
                     dropped += 1
                     continue

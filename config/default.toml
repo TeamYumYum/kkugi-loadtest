@@ -24,6 +24,27 @@ refresh_margin_seconds = 120
 header_name = ""
 header_value = "1"
 
+# --- 계정 풀 ---
+# Worker는 KKUGI_POOL로 풀 하나를 고르고 그 범위의 계정만 실행한다. 풀끼리 번호 범위가 겹치면 안 된다.
+# Master는 실행 중인 Worker끼리 계정 범위가 겹치면 나중에 붙은 Worker를 거부한다.
+# only_between이 있으면 그 시간대(한국 시간)에 계획된 세션만 실행한다.
+
+[pools.base]
+# 서버의 상시 Worker
+start = 0
+count = 1000
+
+[pools.peak-1]
+# 팀원 노트북 Worker. 피크 시간대에만 추가 인구로 활동한다. 노트북마다 다른 풀을 쓴다. 가정
+start = 10000
+count = 1000
+only_between = [["11:30", "13:30"], ["17:30", "19:30"]]
+
+[pools.peak-2]
+start = 11000
+count = 1000
+only_between = [["11:30", "13:30"], ["17:30", "19:30"]]
+
 [schedule]
 # 계획 시각보다 이만큼 늦으면 실행하지 않고 놓친 세션으로 센다(분). 실행기가 모자라면 늘어난다. 가정
 max_lateness_minutes = 30
