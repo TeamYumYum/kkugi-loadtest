@@ -24,6 +24,10 @@ refresh_margin_seconds = 120
 header_name = ""
 header_value = "1"
 
+[schedule]
+# 계획 시각보다 이만큼 늦으면 실행하지 않고 놓친 세션으로 센다(분). 실행기가 모자라면 늘어난다. 가정
+max_lateness_minutes = 30
+
 [think_time]
 # 사용자가 검색어를 입력하고 결과에서 음식을 고르는 시간(초). 가정
 search_min = 2.0

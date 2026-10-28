@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import tomllib
 from dataclasses import dataclass
-from datetime import time
+from datetime import time, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -29,6 +29,9 @@ class Config:
     synthetic_header: tuple[str, str] | None
     search_think: tuple[float, float]
     select_think: tuple[float, float]
+    # realtime 또는 immediate(scheduler.py)
+    schedule_mode: str
+    max_lateness: timedelta
     # 페르소나 이름 → [personas.<이름>] 표
     personas: dict[str, dict[str, Any]]
     # 이 프로세스가 맡는 계정 번호 범위 [account_start, account_start + account_count)
@@ -75,6 +78,8 @@ def load(env: dict[str, str] | None = None) -> Config:
         synthetic_header=(header_name, synthetic["header_value"]) if header_name else None,
         search_think=(float(think["search_min"]), float(think["search_max"])),
         select_think=(float(think["select_min"]), float(think["select_max"])),
+        schedule_mode=env.get("KKUGI_SCHEDULE", "realtime"),
+        max_lateness=timedelta(minutes=float(raw["schedule"]["max_lateness_minutes"])),
         personas=personas,
         account_start=int(env.get("KKUGI_ACCOUNT_START", "0")),
         account_count=account_count,
