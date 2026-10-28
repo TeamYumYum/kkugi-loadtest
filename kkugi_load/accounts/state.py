@@ -20,8 +20,6 @@ CREATE TABLE IF NOT EXISTS account_state (
     access_token      TEXT,
     refresh_token     TEXT,
     onboarded         INTEGER NOT NULL DEFAULT 0,
-    breakfast_ready_on TEXT,
-    last_session_on   TEXT,
     updated_at        TEXT NOT NULL
 )
 """
@@ -36,9 +34,6 @@ class AccountState:
     access_token: str | None = None
     refresh_token: str | None = None
     onboarded: bool = False
-    # 이 날짜(YYYY-MM-DD)의 아침 기록을 확인했다
-    breakfast_ready_on: str | None = None
-    last_session_on: str | None = None
 
 
 class StateStore:
@@ -66,29 +61,24 @@ class StateStore:
             access_token=row["access_token"],
             refresh_token=row["refresh_token"],
             onboarded=bool(row["onboarded"]),
-            breakfast_ready_on=row["breakfast_ready_on"],
-            last_session_on=row["last_session_on"],
         )
 
     def save(self, state: AccountState) -> None:
         self._conn.execute(
             """
             INSERT INTO account_state (email, account_index, persona, member_id, access_token, refresh_token,
-                                       onboarded, breakfast_ready_on, last_session_on, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                       onboarded, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(email) DO UPDATE SET
                 member_id = excluded.member_id,
                 access_token = excluded.access_token,
                 refresh_token = excluded.refresh_token,
                 onboarded = excluded.onboarded,
-                breakfast_ready_on = excluded.breakfast_ready_on,
-                last_session_on = excluded.last_session_on,
                 updated_at = excluded.updated_at
             """,
             (
                 state.email, state.account_index, state.persona, state.member_id, state.access_token,
-                state.refresh_token, int(state.onboarded), state.breakfast_ready_on, state.last_session_on,
-                datetime.now(timezone.utc).isoformat(),
+                state.refresh_token, int(state.onboarded), datetime.now(timezone.utc).isoformat(),
             ),
         )
 

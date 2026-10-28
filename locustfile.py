@@ -1,19 +1,18 @@
 """꾸기 인공 트래픽 발생기의 Locust 진입점.
 
-지금은 다이어터의 점심 기록 세션 하나만 있다. Locust User 하나가 계정 하나를 맡아 세션을 한 번
+Locust User 하나가 계정 하나를 맡아, 페르소나가 정한 오늘의 세션을 시각과 관계없이 차례로 한 번씩
 실행하고 멈춘다. 시간대별 스케줄은 아직 없다.
 
 통계 이름:
-- GET /..., POST /...      측정 세션의 요청
-- [setup] ..., [auth] ...  계정 준비와 토큰 발급. 측정 세션과 나눠 본다
-- SESSION diet_lunch       세션 하나의 성공·실패와 걸린 시간(생각 시간 포함)
+- GET /..., POST /...      세션의 요청
+- [setup] ..., [auth] ...  계정 준비와 토큰 발급. 세션 요청과 나눠 본다
+- SESSION ...              세션 결과(kkugi_load/runner.py)
 """
 
 from __future__ import annotations
 
 import logging
 import random
-import time
 from datetime import datetime
 
 from locust import HttpUser, events, task
@@ -21,10 +20,10 @@ from locust.exception import StopUser
 from locust.runners import LocalRunner
 
 from kkugi_load import config as config_module
-from kkugi_load.accounts.identity import build_account, build_day_plan
 from kkugi_load.accounts.state import StateStore
-from kkugi_load.client.api import ApiError, KkugiApi
-from kkugi_load.sessions import diet_lunch
+from kkugi_load.client.api import KkugiApi
+from kkugi_load.personas import PERSONAS, build_account
+from kkugi_load.runner import run_planned
 
 log = logging.getLogger("kkugi")
 
@@ -70,7 +69,7 @@ def _on_quitting(environment, **_kwargs):
         STORE.close()
 
 
-class DietLunchUser(HttpUser):
+class AccountUser(HttpUser):
     def on_start(self):
         index = POOL.claim()
         if index is None:
@@ -81,49 +80,19 @@ class DietLunchUser(HttpUser):
         self.api = KkugiApi(self.client, CONFIG, self.account, state, STORE)
         self.rng = random.Random()
 
-    def _fire(self, name: str, started: float, exception: Exception | None) -> None:
-        self.environment.events.request.fire(
-            request_type="SESSION", name=name, response_time=(time.perf_counter() - started) * 1000,
-            response_length=0, exception=exception, context={"account": self.account.index},
-        )
-
     @task
-    def lunch_session(self):
-        now = datetime.now(CONFIG.tz)
-        plan = build_day_plan(CONFIG, self.account, now.date())
+    def todays_sessions(self):
         try:
-            started = time.perf_counter()
-            try:
-                diet_lunch.prepare(self.api, plan, now)
-            except (ApiError, diet_lunch.ValidationFailed) as e:
-                self._fire("[setup] diet_lunch", started, e)
-                log.error("계정 %d 준비 실패: %s", self.account.index, e)
-                return
-
-            started = time.perf_counter()
-            try:
-                outcome = diet_lunch.run(
-                    self.api, CONFIG, plan, lambda: datetime.now(CONFIG.tz), time.sleep, self.rng,
-                )
-            except diet_lunch.SessionSkipped as e:
-                self._fire("diet_lunch (skipped)", started, None)
-                log.info("계정 %d 세션 건너뜀: %s", self.account.index, e)
-                return
-            except (ApiError, diet_lunch.ValidationFailed) as e:
-                self._fire("diet_lunch", started, e)
-                log.error("계정 %d 세션 실패: %s", self.account.index, e)
-                return
-            self.api.state.last_session_on = plan.day.isoformat()
-            STORE.save(self.api.state)
-            self._fire("diet_lunch", started, None)
-            log.info("계정 %d 점심 기록 완료: %s", self.account.index, outcome)
+            day = datetime.now(CONFIG.tz).date()
+            planned = PERSONAS[self.account.persona].plan_day(CONFIG, self.account, day)
+            if not planned:
+                log.info("계정 %d는 오늘 활동하지 않는다", self.account.index)
+            for session in planned:
+                run_planned(self.environment.events, self.api, CONFIG, session, self.rng)
         finally:
-            self._finish()
-
-    def _finish(self):
-        POOL.finished += 1
-        # 단독 실행에서는 모든 계정이 한 번씩 끝나면 종료한다. 분산 실행의 종료는 Master가 정한다
-        if POOL.all_finished() and isinstance(self.environment.runner, LocalRunner):
-            log.info("모든 계정의 세션이 끝나 종료한다")
-            self.environment.runner.quit()
+            POOL.finished += 1
+            # 단독 실행에서는 모든 계정이 끝나면 종료한다. 분산 실행의 종료는 Master가 정한다
+            if POOL.all_finished() and isinstance(self.environment.runner, LocalRunner):
+                log.info("모든 계정의 세션이 끝나 종료한다")
+                self.environment.runner.quit()
         raise StopUser()

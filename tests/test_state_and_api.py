@@ -13,7 +13,6 @@ def test_state_round_trip(tmp_path):
     state = store.load("a@x.test", 1, "dieter")
     assert state == AccountState(email="a@x.test", account_index=1, persona="dieter")
     state.access_token, state.refresh_token, state.onboarded = "acc", "ref", True
-    state.breakfast_ready_on = "2026-10-28"
     store.save(state)
     store.close()
     assert StateStore(tmp_path / "s.db").load("a@x.test", 1, "dieter") == state
