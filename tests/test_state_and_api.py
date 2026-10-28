@@ -4,8 +4,8 @@ import json
 import pytest
 
 from kkugi_load import config as config_module
-from kkugi_load.api import jwt_expires_at
-from kkugi_load.state import AccountState, StateStore
+from kkugi_load.client.api import jwt_expires_at
+from kkugi_load.accounts.state import AccountState, StateStore
 
 
 def test_state_round_trip(tmp_path):

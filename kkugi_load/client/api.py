@@ -11,9 +11,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from kkugi_load.accounts import Account
+from kkugi_load.accounts.identity import Account
+from kkugi_load.accounts.state import AccountState, StateStore
 from kkugi_load.config import Config
-from kkugi_load.state import AccountState, StateStore
 
 
 class ApiError(Exception):

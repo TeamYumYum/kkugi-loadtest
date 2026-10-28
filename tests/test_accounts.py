@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 
 from kkugi_load import config as config_module
-from kkugi_load.accounts import build_account, build_day_plan, eaten_at
+from kkugi_load.accounts.identity import build_account, build_day_plan, eaten_at
 
 CONFIG = config_module.load({})
 

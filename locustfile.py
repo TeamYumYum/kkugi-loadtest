@@ -21,10 +21,10 @@ from locust.exception import StopUser
 from locust.runners import LocalRunner
 
 from kkugi_load import config as config_module
-from kkugi_load.accounts import build_account, build_day_plan
-from kkugi_load.api import ApiError, KkugiApi
-from kkugi_load.scenarios import diet_lunch
-from kkugi_load.state import StateStore
+from kkugi_load.accounts.identity import build_account, build_day_plan
+from kkugi_load.accounts.state import StateStore
+from kkugi_load.client.api import ApiError, KkugiApi
+from kkugi_load.sessions import diet_lunch
 
 log = logging.getLogger("kkugi")
 

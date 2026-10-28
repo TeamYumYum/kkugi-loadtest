@@ -10,8 +10,8 @@ import random
 from datetime import datetime
 from typing import Callable
 
-from kkugi_load.accounts import DayPlan, MealPlan, eaten_at
-from kkugi_load.api import Expect, KkugiApi
+from kkugi_load.accounts.identity import DayPlan, MealPlan, eaten_at
+from kkugi_load.client.api import Expect, KkugiApi
 from kkugi_load.config import Config
 
 SETUP = "[setup] "
