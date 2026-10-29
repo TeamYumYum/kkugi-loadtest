@@ -5,6 +5,9 @@
 운영 중 설정 다시 읽기(kkugi_load/control.py)에서는 Master가 읽은 원문 TOML 텍스트를 Worker에 보낸다.
 Worker가 각자 자기 파일을 읽으면 노트북마다 설정이 달라질 수 있어서다. 그래서 텍스트에서 읽는 loads를
 따로 두고 load는 파일을 읽어 loads에 넘긴다. 다만 FROZEN_KEYS의 값은 다시 읽어도 바꿀 수 없다(frozen_changes).
+
+[governor] 표(거버너, kkugi_load/governor.py)는 Master(또는 단독 실행)만 쓴다. Worker도 같은 파일을 읽으므로 함께
+검증해 잘못된 값이면 어느 프로세스도 시작하지 않는다. 다시 읽기로 바꿀 수 있다.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ from __future__ import annotations
 import math
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import time, timedelta
 from pathlib import Path
 from typing import Any
@@ -70,6 +73,21 @@ class Config:
     state_db: Path
     # 시작할 때의 배율(0~1). 계획된 세션을 이 확률로만 실행한다(scheduler.py). 운영 중에는 Master가 바꾼다
     scale: float
+    governor: GovernorSettings
+
+
+@dataclass(frozen=True)
+class GovernorSettings:
+    """[governor] 표. 키 이름과 같다. 뜻은 config/default.toml의 주석과 kkugi_load/governor.py에 있다."""
+
+    enabled: bool
+    interval_seconds: float
+    window_seconds: float
+    max_failure_ratio: float
+    max_p99_ms: float
+    min_requests: int
+    recovery_seconds: float
+    recovery_step: float
 
 
 def hhmm(value: str) -> time:
@@ -135,6 +153,52 @@ def read_scale(value: Any) -> float:
     return scale
 
 
+def _positive_number(table: dict[str, Any], key: str) -> float:
+    value = table[key]
+    # TOML의 true도 파이썬에서는 int라 따로 막는다. NaN과 무한대는 아래 비교에 걸린다
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value < math.inf:
+        raise ValueError(f"[governor] {key}는 양수여야 한다: {value!r}")
+    return float(value)
+
+
+def read_governor(table: Any) -> GovernorSettings:
+    """[governor] 표를 검증한다. 어긋나면 이유를 담은 ValueError를 낸다.
+
+    기본값으로 채우지 않는다. 빠지면 어떤 기준으로 배율을 낮추는지 모르는 채로 실행하게 된다.
+    """
+    if not isinstance(table, dict):
+        raise ValueError("[governor] 표가 없다")
+    missing = [f.name for f in fields(GovernorSettings) if f.name not in table]
+    if missing:
+        raise ValueError(f"[governor]에 {', '.join(missing)}가 없다")
+    if not isinstance(table["enabled"], bool):
+        raise ValueError(f"[governor] enabled는 true나 false여야 한다: {table['enabled']!r}")
+    min_requests = table["min_requests"]
+    if isinstance(min_requests, bool) or not isinstance(min_requests, int) or min_requests < 1:
+        raise ValueError(f"[governor] min_requests는 1 이상의 정수여야 한다: {min_requests!r}")
+    settings = GovernorSettings(
+        enabled=table["enabled"],
+        interval_seconds=_positive_number(table, "interval_seconds"),
+        window_seconds=_positive_number(table, "window_seconds"),
+        max_failure_ratio=_positive_number(table, "max_failure_ratio"),
+        max_p99_ms=_positive_number(table, "max_p99_ms"),
+        min_requests=min_requests,
+        recovery_seconds=_positive_number(table, "recovery_seconds"),
+        recovery_step=_positive_number(table, "recovery_step"),
+    )
+    if settings.max_failure_ratio >= 1:
+        raise ValueError(f"[governor] max_failure_ratio는 1보다 작아야 한다: {settings.max_failure_ratio}")
+    if settings.recovery_step > 1:
+        raise ValueError(f"[governor] recovery_step은 1 이하여야 한다: {settings.recovery_step}")
+    # 창은 확인 때마다 남긴 스냅샷의 차이로 만든다. 창이 주기보다 짧으면 실제로는 주기만큼의 창을 보게 된다
+    if settings.window_seconds < settings.interval_seconds:
+        raise ValueError(
+            f"[governor] window_seconds({settings.window_seconds})는 interval_seconds"
+            f"({settings.interval_seconds}) 이상이어야 한다"
+        )
+    return settings
+
+
 def config_path(env: dict[str, str]) -> Path:
     return Path(env.get("KKUGI_CONFIG") or DEFAULT_CONFIG)
 
@@ -196,6 +260,7 @@ def loads(text: str, env: dict[str, str] | None = None) -> Config:
     if "scale" not in (raw.get("control") or {}):
         raise ValueError("[control]에 scale이 없다")
     scale = read_scale(raw["control"]["scale"])
+    governor = read_governor(raw.get("governor"))
 
     return Config(
         tz=ZoneInfo(raw["timezone"]),
@@ -215,4 +280,5 @@ def loads(text: str, env: dict[str, str] | None = None) -> Config:
         pool=pool,
         state_db=Path(env.get("KKUGI_STATE_DB") or DEFAULT_STATE_DB),
         scale=scale,
+        governor=governor,
     )

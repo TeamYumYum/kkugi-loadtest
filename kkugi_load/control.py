@@ -8,11 +8,12 @@
 
 구조:
 - Control: Master(또는 단독 실행)의 상태. 사람이 정한 배율(requested_scale)과 실제로 Worker에 보내는
-  배율(scale)을 나눠 둔다. 지금은 둘이 같고, 자동으로 배율을 낮추는 거버너(계획 2-3)는 scale만 requested_scale
-  이하에서 바꾼다(limit_scale).
+  배율(scale)을 나눠 둔다. 사람이 배율을 정하면 둘이 같아지고, 거버너(kkugi_load/governor.py)는 scale만
+  requested_scale 이하에서 바꾼다(limit_scale). 거버너는 requested_changes로 사람이 배율을 정했는지 알아보고,
+  governor_settings에서 [governor] 값을 읽는다. 설정을 다시 읽으면 governor_settings도 새 값이 된다.
 - Applier: Worker(또는 단독 실행)가 Control의 상태(payload)를 자기 Scheduler에 적용한다.
 - add_routes: Master 웹 UI에 조절 경로를 더한다. 값은 폼(application/x-www-form-urlencoded)으로 받는다.
-    GET  /kkugi/control  현재 배율, 설정 버전, Worker별 적용 상태
+    GET  /kkugi/control  현재 배율, 설정 버전, Worker별 적용 상태, 거버너 상태(Governor.status)
     POST /kkugi/scale    scale=<0~1>
     POST /kkugi/stop     배율 0
     POST /kkugi/reload   설정 파일 다시 읽기
@@ -28,12 +29,13 @@ from __future__ import annotations
 
 import json
 import logging
+import tomllib
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Callable
 
 from kkugi_load import config as config_module
-from kkugi_load.config import read_scale
+from kkugi_load.config import read_governor, read_scale
 from kkugi_load.scheduler import Scheduler
 
 log = logging.getLogger("kkugi")
@@ -49,6 +51,8 @@ class Control:
     def __init__(self, scale: float, startup_text: str, env: dict[str, str]):
         # 사람이 정한 배율. 자동 조절의 상한이다
         self.requested_scale = read_scale(scale)
+        # 사람이 배율을 정한 횟수. 같은 값으로 다시 정해도 늘어서 거버너가 그 값에서 다시 시작한다
+        self.requested_changes = 0
         # 실제로 Worker에 보내는 배율. requested_scale 이하다
         self.scale = self.requested_scale
         # 시작할 때 읽은 설정 원문. 다시 읽은 설정의 FROZEN_KEYS를 이것과 비교한다
@@ -60,11 +64,16 @@ class Control:
         self.reloaded_at: str | None = None
         # Worker 노드 id(단독 실행은 "local") → 마지막으로 알려 온 적용 상태(Applier.apply의 반환값)
         self.workers: dict[str, dict] = {}
+        # [governor] 값. 거버너가 확인할 때마다 읽는다
+        self.governor_settings = read_governor(tomllib.loads(startup_text).get("governor"))
+        # 돌고 있는 거버너(kkugi_load/governor.py의 Governor). 상태를 /kkugi/control에 보여 준다
+        self.governor = None
 
     def set_requested_scale(self, value: object) -> float:
         """사람이 배율을 정한다. 실제 배율도 같은 값이 된다. 0~1 밖이면 ValueError."""
         scale = read_scale(value)
         self.requested_scale = self.scale = scale
+        self.requested_changes += 1
         log.info("배율을 %s로 정함", scale)
         return scale
 
@@ -80,13 +89,14 @@ class Control:
         """
         try:
             text = config_module.read_text(self.env)
-            config_module.loads(text, self.env)
+            loaded = config_module.loads(text, self.env)
             changed = config_module.frozen_changes(self.startup_text, text)
         except Exception as e:  # noqa: BLE001 파일 오류, TOML 문법 오류, 검증 실패를 모두 이유로 돌려준다
             raise ValueError(f"설정을 읽지 못함: {type(e).__name__}: {e}") from e
         if changed:
             raise ValueError(f"다시 읽어도 바꿀 수 없는 설정이 시작할 때와 다름: {', '.join(changed)}")
         self.config_text = text
+        self.governor_settings = loaded.governor
         self.config_version += 1
         self.reloaded_at = _now_iso()
         log.info("설정을 다시 읽음: 버전 %d", self.config_version)
@@ -111,6 +121,7 @@ class Control:
             "config_version": self.config_version,
             "config_reloaded_at": self.reloaded_at,
             "workers": workers,
+            "governor": self.governor.status() if self.governor is not None else None,
         }
 
 

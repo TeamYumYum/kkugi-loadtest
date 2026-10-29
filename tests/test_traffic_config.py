@@ -180,3 +180,57 @@ def test_frozen_changes_finds_only_keys_that_cannot_change():
     changed = DEFAULT_TEXT.replace('api_prefix = "/api/v1"', 'api_prefix = "/api/v2"').replace(
         "seed = 20261028", "seed = 1").replace("count = 1000\n", "count = 999\n", 1)
     assert config_module.frozen_changes(DEFAULT_TEXT, changed) == ["api_prefix", "accounts", "pools"]
+
+
+# --- [governor] ---
+
+def _with_governor(key: str, line: str) -> str:
+    text, n = re.subn(rf"^{key} = .*\n", line, DEFAULT_TEXT, count=1, flags=re.M)
+    assert n == 1
+    return text
+
+
+def test_default_governor_settings():
+    governor = config_module.load({}).governor
+    assert governor == config_module.GovernorSettings(
+        enabled=True, interval_seconds=60.0, window_seconds=300.0, max_failure_ratio=0.02, max_p99_ms=3000.0,
+        min_requests=200, recovery_seconds=600.0, recovery_step=0.1,
+    )
+
+
+@pytest.mark.parametrize("key, value", [
+    ("enabled", "1"),
+    ("enabled", '"true"'),
+    ("interval_seconds", "0"),
+    ("interval_seconds", "-60"),
+    ("interval_seconds", "nan"),
+    ("interval_seconds", "true"),
+    ("window_seconds", "inf"),
+    ("window_seconds", "30"),
+    ("max_failure_ratio", "0"),
+    ("max_failure_ratio", "1"),
+    ("max_failure_ratio", '"2%"'),
+    ("max_p99_ms", "0"),
+    ("min_requests", "0"),
+    ("min_requests", "200.5"),
+    ("min_requests", "true"),
+    ("recovery_seconds", "-1"),
+    ("recovery_step", "0"),
+    ("recovery_step", "1.5"),
+])
+def test_invalid_governor_value_stops_start(tmp_path, key, value):
+    with pytest.raises(ValueError, match=r"\[governor\]"):
+        _load_with(tmp_path, _with_governor(key, f"{key} = {value}\n"))
+
+
+def test_governor_keys_are_required(tmp_path):
+    with pytest.raises(ValueError, match=r"\[governor\]에 max_p99_ms가 없다"):
+        _load_with(tmp_path, _with_governor("max_p99_ms", ""))
+    with pytest.raises(ValueError, match=r"\[governor\] 표가 없다"):
+        _load_with(tmp_path, DEFAULT_TEXT.replace("[governor]\n", "[governor_off]\n"))
+
+
+def test_governor_values_can_change_on_reload():
+    changed = _with_governor("max_p99_ms", "max_p99_ms = 5000\n")
+    assert config_module.frozen_changes(DEFAULT_TEXT, changed) == []
+    assert config_module.loads(changed, {}).governor.max_p99_ms == 5000.0

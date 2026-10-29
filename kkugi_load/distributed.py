@@ -14,6 +14,10 @@ Locust Master는 Worker마다 User를 몇 개 돌릴지만 정하고 우리 계�
 - 배율이나 설정이 바뀌면 Master가 MSG_CONTROL로 같은 payload를 모든 Worker에 보낸다.
 - Worker는 승인이나 MSG_CONTROL을 적용할 때마다 MSG_APPLIED로 적용 상태(Applier.apply의 반환값)를 알린다.
   Master는 이것을 웹 UI의 /kkugi/control에 Worker별로 보여 준다.
+
+거버너(kkugi_load/governor.py)도 Master에서 돈다. Worker들이 보낸 통계가 모이는 곳이 Master이기 때문이다.
+setup_master가 돌려주는 publish를 locustfile.py가 거버너에 넘긴다. 거버너가 실제 배율을 바꾸면 사람이 바꿀 때와
+같은 MSG_CONTROL로 보낸다. 웹 UI가 없어도 거버너는 돈다.
 """
 
 from __future__ import annotations
@@ -68,7 +72,11 @@ def rebalancing_problem(parsed_options) -> str | None:
     )
 
 
-def setup_master(environment, control: Control) -> PoolRegistry:
+def setup_master(environment, control: Control) -> Callable[[], None] | None:
+    """Master의 메시지와 웹 UI 경로를 붙이고 Worker에 조절 상태를 보내는 함수(publish)를 돌려준다.
+
+    --enable-rebalancing이 없어 Master를 내리는 중이면 None을 돌려준다.
+    """
     runner = environment.runner
     registry = PoolRegistry()
 
@@ -84,7 +92,7 @@ def setup_master(environment, control: Control) -> PoolRegistry:
                 environment.web_ui.greenlet.kill(block=False)
 
         gevent.spawn(quit_master)
-        return registry
+        return None
 
     def alive(node_id: str) -> bool:
         client = runner.clients.get(node_id)
@@ -115,7 +123,7 @@ def setup_master(environment, control: Control) -> PoolRegistry:
         add_routes(environment.web_ui, control, publish, alive)
     else:
         log.warning("웹 UI 없이 Master를 띄워 배율과 설정을 운영 중에 바꿀 수 없다")
-    return registry
+    return publish
 
 
 class WorkerGate:

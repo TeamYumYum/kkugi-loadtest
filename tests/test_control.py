@@ -72,6 +72,7 @@ def test_reload_sends_new_text_and_bumps_version(tmp_path):
     (DEFAULT_TEXT.replace('header_value = "1"', 'header_value = "2"'), "synthetic"),
     (DEFAULT_TEXT.replace("search_min = 2.0", "search_min = "), "설정을 읽지 못함"),
     (DEFAULT_TEXT.replace("activity = 1.0\n", "activity = 1.5\n", 1), "1을 넘는다"),
+    (DEFAULT_TEXT.replace("max_failure_ratio = 0.02", "max_failure_ratio = 2"), "max_failure_ratio"),
 ])
 def test_reload_rejects_invalid_or_frozen_changes_and_sends_nothing(tmp_path, text, reason):
     control, path = _control(tmp_path)
@@ -203,3 +204,13 @@ def test_control_route_shows_worker_status(web):
     assert body["requested_scale"] == body["scale"] == 1.0
     assert body["config_version"] == 0
     assert body["workers"]["w1"]["scale"] == 1.0 and "reported_at" in body["workers"]["w1"]
+    # 거버너를 붙이지 않았으면 상태가 없다. 붙인 경우는 tests/test_governor.py에서 본다
+    assert body["governor"] is None
+
+
+def test_requested_changes_counts_every_human_setting(tmp_path):
+    control, _ = _control(tmp_path)
+    control.set_requested_scale(0.5)
+    control.set_requested_scale(0.5)
+    control.limit_scale(0.2)
+    assert control.requested_changes == 2

@@ -15,6 +15,9 @@ User 생성이 끝났을 때와 날짜가 바뀌어 새 일정을 만들었을 �
 설정을 다시 읽으면 세션은 Scheduler가 가진 새 설정(SCHEDULER.config)으로 실행한다. 시작 설정(CONFIG)은 계정을
 만들 때만 쓴다.
 
+거버너(kkugi_load/governor.py): Master(또는 단독 실행)가 자기 통계에서 최근 창의 HTTP 실패율과 p99를 보고 실제
+배율을 자동으로 낮추거나 되돌린다. 단독 실행에서는 바꾼 배율을 자기 Scheduler에 바로 적용한다.
+
 통계 이름:
 - GET /..., POST /...      세션의 요청
 - [setup] ..., [auth] ...  계정 준비와 토큰 발급. 세션 요청과 나눠 본다
@@ -33,6 +36,7 @@ from locust import HttpUser, constant, events, task
 from locust.runners import LocalRunner, MasterRunner, WorkerRunner
 
 from kkugi_load import config as config_module
+from kkugi_load import governor
 from kkugi_load.capacity import shortage_warning
 from kkugi_load.accounts.identity import Account
 from kkugi_load.accounts.state import AccountState, StateStore
@@ -75,7 +79,11 @@ def _on_init(environment, **_kwargs):
     global STORE, SCHEDULER, GATE, ENVIRONMENT
     ENVIRONMENT = environment
     if isinstance(environment.runner, MasterRunner):
-        setup_master(environment, Control(CONFIG.scale, CONFIG_TEXT, ENV))
+        control = Control(CONFIG.scale, CONFIG_TEXT, ENV)
+        publish = setup_master(environment, control)
+        # None이면 --enable-rebalancing이 없어 Master를 내리는 중이다
+        if publish is not None:
+            governor.start(environment, control, publish)
         return
     pool = CONFIG.pool
     STORE = StateStore(CONFIG.state_db)
@@ -101,8 +109,13 @@ def _on_init(environment, **_kwargs):
     GATE = WorkerGate(accepted=True)
     # 단독 실행: Master가 없으므로 웹 UI 경로가 바뀐 값을 자기 Scheduler에 바로 적용한다
     control = Control(CONFIG.scale, CONFIG_TEXT, ENV)
+
+    def publish():
+        control.record("local", applier.apply(control.payload()))
+
     if environment.web_ui is not None:
-        add_routes(environment.web_ui, control, lambda: control.record("local", applier.apply(control.payload())))
+        add_routes(environment.web_ui, control, publish)
+    governor.start(environment, control, publish)
 
 
 @events.spawning_complete.add_listener
