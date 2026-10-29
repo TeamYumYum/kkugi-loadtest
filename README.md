@@ -120,6 +120,8 @@ python -m venv .venv
 
 발생기는 모든 요청(로그인 포함)에 `X-Synthetic-Traffic: 1` 헤더를 붙입니다. backend는 이 헤더로 지표(`http.server.requests`의 `synthetic` 태그), 로그(`synthetic` 필드), 추적(span 속성)에서 인공 요청을 구분합니다. 인공 회원은 이메일이 `lt-<번호>@synthetic.kkugi.test`인 `EMAIL_DEV` 회원입니다.
 
+`<번호>`는 `generation × 1,000,000 + 계정 번호`입니다. generation은 계정이 바깥에서 탈퇴되어 다시 만든 횟수이고 처음은 0입니다. 예를 들어 계정 42는 `lt-00042@...`이고, 탈퇴된 뒤에는 `lt-1000042@...`로 새 회원이 됩니다. 페르소나와 프로필은 계정 번호로 정하므로 바뀌지 않습니다. 발생기는 탈퇴 API를 부르지 않습니다.
+
 ### 구조
 
 | 위치 | 역할 |
@@ -127,7 +129,7 @@ python -m venv .venv
 | `kkugi_load/personas/` | 페르소나. 계정의 프로필과 하루 세션 일정을 정합니다. 페르소나마다 파일 하나입니다 |
 | `kkugi_load/sessions/` | 세션. 요청 흐름과 결과 검증입니다. 여러 페르소나가 함께 씁니다 |
 | `kkugi_load/scheduler.py` | 한 프로세스가 맡은 계정들의 세션을 시각순으로 내줍니다 |
-| `kkugi_load/accounts/` | 계정 번호에서 이메일·페르소나·식사 UUID를 정하고, 토큰 등 상태를 SQLite에 저장합니다 |
+| `kkugi_load/accounts/` | 계정 번호에서 페르소나를, 계정 번호와 generation에서 이메일과 식사 UUID를 정하고, 토큰 등 상태를 SQLite에 저장합니다 |
 | `kkugi_load/client/api.py` | backend 호출, 응답 해석, 토큰 재발급 |
 | `kkugi_load/distributed.py` | Master가 Worker들의 계정 범위가 겹치지 않는지 확인합니다 |
 | `config/default.toml` | 계정 풀, 페르소나 비율과 행동, 생각 시간 등 설정. "가정"으로 표시한 값은 확정 사양이 아닙니다 |
@@ -153,7 +155,7 @@ KKUGI_SCHEDULE=immediate KKUGI_ACCOUNT_START=0 KKUGI_ACCOUNT_COUNT=10   .venv/Sc
 
 ```bash
 # 서버: Master와 상시 Worker
-locust -f locustfile.py --master --host https://<대상>
+locust -f locustfile.py --master --enable-rebalancing --host https://<대상>
 KKUGI_POOL=base locust -f locustfile.py --worker --master-host 127.0.0.1
 
 # 팀원 노트북: 풀마다 하나씩, 다른 노트북과 겹치지 않게
@@ -161,7 +163,7 @@ KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 ```
 
 - Master의 User 수는 연결된 Worker들에 고르게 나뉩니다. 노트북 Worker를 붙일 때는 Worker마다 충분한 User가 가도록 Master의 User 수도 함께 늘립니다.
-- Worker가 새로 붙으면 Locust가 User를 다시 나눕니다. 하지만 Worker가 응답 없이 끊기면, 기본 설정에서는 그 Worker의 User가 남은 Worker로 돌아가지 않아 전체 User 수가 줄어듭니다. Master를 `--enable-rebalancing`으로 띄우면 끊길 때도 다시 나눕니다(Locust 2.47.0, 로컬에서 확인).
+- Worker가 새로 붙으면 Locust가 User를 다시 나눕니다. 하지만 Worker가 응답 없이 끊기면, 기본 설정에서는 그 Worker의 User가 남은 Worker로 돌아가지 않아 전체 User 수가 줄어듭니다. Master를 `--enable-rebalancing`으로 띄우면 끊길 때도 다시 나눕니다(Locust 2.47.0, 로컬에서 확인). 이 옵션 없이 띄운 Master는 이유를 로그에 남기고 종료 코드 1로 끝납니다.
 - Worker는 Master가 계정 범위를 승인하기 전에는 세션을 실행하지 않습니다. 겹친다고 거부된 Worker는 종료 코드 1로 끝납니다.
 - Master·Worker 연결 포트는 TCP 5557입니다. Windows에서는 `--processes`를 쓸 수 없으므로 Worker마다 프로세스를 따로 띄웁니다.
 
@@ -170,7 +172,7 @@ KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 | `KKUGI_POOL` | `base` | 이 Worker가 맡을 계정 풀 이름(`config/default.toml`의 `[pools.*]`) |
 | `KKUGI_ACCOUNT_START`, `KKUGI_ACCOUNT_COUNT` | 풀의 값 | 풀의 범위를 덮어씁니다. 로컬 검증용입니다 |
 | `KKUGI_SCHEDULE` | `realtime` | `realtime` 또는 `immediate` |
-| `KKUGI_STATE_DB` | `state/accounts.db` | 계정 상태(토큰 포함) SQLite 파일. 저장소에 올리지 않습니다 |
+| `KKUGI_STATE_DB` | `state/accounts.db` | 계정 상태(generation, 토큰, 회원 ID, 온보딩 여부) SQLite 파일. 계정 번호가 키입니다. 옛 형식 파일이면 시작하지 않으니 지우고 다시 시작합니다. 저장소에 올리지 않습니다 |
 | `KKUGI_CONFIG` | `config/default.toml` | 설정 파일 |
 
 ### 통계 읽는 법
@@ -183,6 +185,7 @@ KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 | `SESSION ... (skipped)` | 이미 기록한 끼니라 저장하지 않은 세션 |
 | `SCHEDULE start_delay` | 계획 시각보다 늦게 시작한 정도. 실행기가 모자라면 늘어납니다 |
 | `SCHEDULE missed` | 너무 늦어 실행하지 않은 세션(실패로 셉니다) |
+| `ACCOUNT withdrawn` | 계정이 바깥에서 탈퇴되어(401 `MEMBER_WITHDRAWN`) 세션을 끝낸 경우. 서버는 정상 동작했으므로 실패로 세지 않습니다. 다음 세션이 새 이메일로 가입하고 온보딩합니다 |
 
 식사 세션은 저장한 식사의 UUID·끼니·음식·양·날짜, 다른 데이터가 섞이지 않았는지, 요약의 섭취 칼로리가 저장한 식사만큼 늘었는지를 확인합니다.
 

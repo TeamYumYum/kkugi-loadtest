@@ -5,12 +5,14 @@ Locust User는 계정이 아니라 실행기다. 이 프로세스가 맡은 계�
 User 수가 모자라면 SCHEDULE start_delay가 늘고 SCHEDULE missed가 생긴다.
 
 분산 실행에서 Master는 세션을 실행하지 않고 Worker들의 계정 범위가 겹치지 않는지만 확인한다
-(kkugi_load/distributed.py). 계정은 Worker가 KKUGI_POOL로 고른 계정 풀에서 맡는다.
+(kkugi_load/distributed.py). 계정은 Worker가 KKUGI_POOL로 고른 계정 풀에서 맡는다. Master는
+--enable-rebalancing 없이 뜨면 종료한다.
 
 통계 이름:
 - GET /..., POST /...      세션의 요청
 - [setup] ..., [auth] ...  계정 준비와 토큰 발급. 세션 요청과 나눠 본다
 - SESSION ..., SCHEDULE .. 세션 결과와 일정 지연(kkugi_load/runner.py)
+- ACCOUNT withdrawn         바깥에서 탈퇴된 계정. 다음 세션이 새 이메일로 가입한다(kkugi_load/runner.py)
 """
 
 from __future__ import annotations

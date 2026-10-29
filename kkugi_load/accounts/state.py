@@ -1,7 +1,7 @@
 """계정별 실행 상태를 발생기 로컬 SQLite에 저장한다.
 
-Worker마다 자기 파일을 쓴다. Worker 사이에 상태를 옮기지 않으므로, 같은 계정 번호를 두 Worker에
-배정하지 않는 것은 실행하는 사람의 책임이다(KKUGI_ACCOUNT_START, KKUGI_ACCOUNT_COUNT).
+Worker마다 자기 파일을 쓴다. Worker 사이에 상태를 옮기지 않는다. 실행 중인 두 Worker가 같은 계정 번호를
+맡지 않게 하는 것은 Master의 계정 범위 검사다(kkugi_load/distributed.py).
 
 계정 번호가 기본 키다. 이메일은 계정 번호와 generation에서 계산하므로 저장하지 않는다.
 옛 형식의 파일은 옮기지 않고 시작을 멈춘다. 지우고 다시 시작하면 된다.
