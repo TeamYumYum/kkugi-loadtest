@@ -146,3 +146,37 @@ def test_account_multiplier_follows_weights_and_mean_is_one():
     assert abs(counts[0.5] / n - 0.25) < 0.02
     assert abs(counts[1.0] / n - 0.50) < 0.02
     assert abs(counts[1.5] / n - 0.25) < 0.02
+
+
+# --- [control] 배율과 설정 다시 읽기 ---
+
+def _with_scale(line: str) -> str:
+    text, n = re.subn(r"^scale = 1\.0\n", line, DEFAULT_TEXT, count=1, flags=re.M)
+    assert n == 1
+    return text
+
+
+def test_default_scale_is_one_and_loads_matches_load():
+    config = config_module.load({})
+    assert config.scale == 1.0
+    assert config_module.loads(DEFAULT_TEXT, {}) == config
+
+
+@pytest.mark.parametrize("bad", ["-0.1", "1.5", "nan", '"half"', "true"])
+def test_scale_must_be_between_0_and_1(tmp_path, bad):
+    with pytest.raises(ValueError, match="배율"):
+        _load_with(tmp_path, _with_scale(f"scale = {bad}\n"))
+
+
+def test_scale_is_required(tmp_path):
+    with pytest.raises(ValueError, match=r"\[control\]에 scale이 없다"):
+        _load_with(tmp_path, _with_scale(""))
+
+
+def test_frozen_changes_finds_only_keys_that_cannot_change():
+    assert config_module.frozen_changes(DEFAULT_TEXT, DEFAULT_TEXT + "\n# 주석만 다름\n") == []
+    think = DEFAULT_TEXT.replace("search_min = 2.0", "search_min = 3.0")
+    assert config_module.frozen_changes(DEFAULT_TEXT, think) == []
+    changed = DEFAULT_TEXT.replace('api_prefix = "/api/v1"', 'api_prefix = "/api/v2"').replace(
+        "seed = 20261028", "seed = 1").replace("count = 1000\n", "count = 999\n", 1)
+    assert config_module.frozen_changes(DEFAULT_TEXT, changed) == ["api_prefix", "accounts", "pools"]

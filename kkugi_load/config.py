@@ -1,6 +1,10 @@
 """설정 파일(TOML)과 환경 변수를 읽는다.
 
 페르소나별 설정은 각 페르소나가 직접 해석하므로 여기서는 원본 그대로 넘긴다.
+
+운영 중 설정 다시 읽기(kkugi_load/control.py)에서는 Master가 읽은 원문 TOML 텍스트를 Worker에 보낸다.
+Worker가 각자 자기 파일을 읽으면 노트북마다 설정이 달라질 수 있어서다. 그래서 텍스트에서 읽는 loads를
+따로 두고 load는 파일을 읽어 loads에 넘긴다. 다만 FROZEN_KEYS의 값은 다시 읽어도 바꿀 수 없다(frozen_changes).
 """
 
 from __future__ import annotations
@@ -19,6 +23,9 @@ DEFAULT_CONFIG = ROOT / "config" / "default.toml"
 DEFAULT_STATE_DB = ROOT / "state" / "accounts.db"
 # 시간대별 확률표의 칸 수. 인덱스가 한국 시간의 시(0~23)다
 HOURS = 24
+# 운영 중에 다시 읽어도 바꿀 수 없는 최상위 키. 바뀌면 계정의 이메일, 인증, 계정 범위가 달라져
+# 이미 만든 회원이나 다른 Worker의 범위와 어긋난다
+FROZEN_KEYS = ("timezone", "api_prefix", "accounts", "auth", "synthetic", "pools")
 
 
 @dataclass(frozen=True)
@@ -61,6 +68,8 @@ class Config:
     activity_multipliers: tuple[tuple[float, float], ...]
     pool: Pool
     state_db: Path
+    # 시작할 때의 배율(0~1). 계획된 세션을 이 확률로만 실행한다(scheduler.py). 운영 중에는 Master가 바꾼다
+    scale: float
 
 
 def hhmm(value: str) -> time:
@@ -112,11 +121,48 @@ def read_traffic(
     return table, multipliers
 
 
+def read_scale(value: Any) -> float:
+    """배율을 검증해 돌려준다. 수가 아니거나 0~1 밖이면 이유를 담은 ValueError를 낸다."""
+    if isinstance(value, bool):
+        raise ValueError(f"배율은 0 이상 1 이하의 수여야 한다: {value!r}")
+    try:
+        scale = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"배율은 0 이상 1 이하의 수여야 한다: {value!r}") from None
+    # NaN은 어떤 비교도 거짓이라 아래 범위 검사에 걸린다
+    if not 0 <= scale <= 1:
+        raise ValueError(f"배율은 0 이상 1 이하여야 한다: {value!r}")
+    return scale
+
+
+def config_path(env: dict[str, str]) -> Path:
+    return Path(env.get("KKUGI_CONFIG") or DEFAULT_CONFIG)
+
+
+def read_text(env: dict[str, str] | None = None) -> str:
+    """설정 파일의 원문. Master가 다시 읽은 설정을 Worker에 보낼 때 이 텍스트를 그대로 보낸다."""
+    env = dict(os.environ) if env is None else env
+    return config_path(env).read_text(encoding="utf-8")
+
+
+def frozen_changes(old_text: str, new_text: str) -> list[str]:
+    """두 설정 원문에서 FROZEN_KEYS 중 값이 다른 키 이름. 같으면 빈 목록.
+
+    파싱한 값끼리 비교하므로 주석이나 줄 바꿈만 다른 것은 바뀐 것으로 보지 않는다.
+    """
+    old, new = tomllib.loads(old_text), tomllib.loads(new_text)
+    return [key for key in FROZEN_KEYS if old.get(key) != new.get(key)]
+
+
 def load(env: dict[str, str] | None = None) -> Config:
     env = dict(os.environ) if env is None else env
-    path = Path(env.get("KKUGI_CONFIG") or DEFAULT_CONFIG)
-    with path.open("rb") as f:
-        raw = tomllib.load(f)
+    return loads(read_text(env), env)
+
+
+def loads(text: str, env: dict[str, str] | None = None) -> Config:
+    """설정 원문과 환경 변수로 설정을 만든다. 계정 풀과 일정 방식, 상태 DB는 환경 변수가 정한다."""
+    env = dict(os.environ) if env is None else env
+    raw = tomllib.loads(text)
 
     accounts = raw["accounts"]
     auth = raw["auth"]
@@ -146,6 +192,10 @@ def load(env: dict[str, str] | None = None) -> Config:
     )
     if pool.start < 0 or pool.count < 1:
         raise ValueError(f"계정 풀 {pool_name}의 범위가 잘못됨: start={pool.start}, count={pool.count}")
+    # 기본값으로 채우지 않는다. 빠지면 시작 배율을 모르는 채로 실행하게 된다
+    if "scale" not in (raw.get("control") or {}):
+        raise ValueError("[control]에 scale이 없다")
+    scale = read_scale(raw["control"]["scale"])
 
     return Config(
         tz=ZoneInfo(raw["timezone"]),
@@ -164,4 +214,5 @@ def load(env: dict[str, str] | None = None) -> Config:
         activity_multipliers=activity_multipliers,
         pool=pool,
         state_db=Path(env.get("KKUGI_STATE_DB") or DEFAULT_STATE_DB),
+        scale=scale,
     )

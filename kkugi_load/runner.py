@@ -7,6 +7,7 @@
 - ACCOUNT withdrawn         계정이 바깥에서 탈퇴되어 세션을 끝냄(실패로 세지 않는다). 다음 세션이 새 이메일로 가입한다
 - SCHEDULE start_delay      계획 시각보다 늦게 시작한 정도
 - SCHEDULE missed           너무 늦어 실행하지 않은 세션(실패로 센다)
+- SCHEDULE scaled_out       배율(kkugi_load/control.py)로 걸러 실행하지 않은 세션. 계획대로 뺀 것이라 실패로 세지 않는다
 """
 
 from __future__ import annotations
@@ -46,6 +47,15 @@ def report_missed(events, planned: PlannedSession, reason: str) -> None:
         exception=RuntimeError(f"{planned.name}: {reason}"), context={"account": planned.account_index},
     )
     log.warning("계정 %d %s 놓침: %s", planned.account_index, planned.name, reason)
+
+
+def report_scaled_out(events, count: int) -> None:
+    """배율로 거른 세션 수만큼 통계의 SCHEDULE scaled_out에 남긴다. 실패가 아니다."""
+    for _ in range(count):
+        events.request.fire(
+            request_type="SCHEDULE", name="scaled_out", response_time=0, response_length=0, exception=None,
+            context={},
+        )
 
 
 def report_withdrawn(events, planned: PlannedSession, started: float, e: AccountWithdrawn) -> None:

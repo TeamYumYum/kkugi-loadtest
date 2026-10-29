@@ -7,6 +7,13 @@ Locust Master는 Worker마다 User를 몇 개 돌릴지만 정하고 우리 계�
 - 겹치면 Master가 나중에 등록한 Worker를 거부하고, 그 Worker는 스스로 종료한다.
 - 응답이 끊긴 Worker의 범위는 다시 쓸 수 있다. 같은 계정을 쓰는 Worker를 재시작할 때다.
 - Master는 --enable-rebalancing 없이 뜨면 종료한다. 없으면 끊긴 Worker의 User가 남은 Worker로 돌아가지 않는다.
+
+운영 중 조절(kkugi_load/control.py)도 같은 통로로 보낸다.
+- 승인 메시지(MSG_ACCEPTED)에 Control.payload()를 싣는다. 나중에 붙은 Worker도 현재 배율과 (다시 읽은 적이
+  있으면) 설정을 받고, 그것을 적용한 다음에 세션을 실행하기 시작한다.
+- 배율이나 설정이 바뀌면 Master가 MSG_CONTROL로 같은 payload를 모든 Worker에 보낸다.
+- Worker는 승인이나 MSG_CONTROL을 적용할 때마다 MSG_APPLIED로 적용 상태(Applier.apply의 반환값)를 알린다.
+  Master는 이것을 웹 UI의 /kkugi/control에 Worker별로 보여 준다.
 """
 
 from __future__ import annotations
@@ -18,12 +25,17 @@ import gevent
 from locust.runners import STATE_MISSING
 
 from kkugi_load.config import Pool
+from kkugi_load.control import Applier, Control, add_routes
 
 log = logging.getLogger("kkugi")
 
 MSG_REGISTER = "kkugi_pool_register"
 MSG_ACCEPTED = "kkugi_pool_accepted"
 MSG_REJECTED = "kkugi_pool_rejected"
+# Master → Worker: Control.payload() {"scale": float, "version": int, "config": str | None}
+MSG_CONTROL = "kkugi_control"
+# Worker → Master: Applier.apply()의 반환값 {"scale": float, "version": int, "error": str | None}
+MSG_APPLIED = "kkugi_control_applied"
 
 
 class PoolRegistry:
@@ -56,7 +68,7 @@ def rebalancing_problem(parsed_options) -> str | None:
     )
 
 
-def setup_master(environment) -> PoolRegistry:
+def setup_master(environment, control: Control) -> PoolRegistry:
     runner = environment.runner
     registry = PoolRegistry()
 
@@ -85,9 +97,24 @@ def setup_master(environment) -> PoolRegistry:
             runner.send_message(MSG_REJECTED, {"reason": reason}, client_id=msg.node_id)
             return
         log.info("Worker %s 계정 풀 %s 승인", msg.node_id, msg.data)
-        runner.send_message(MSG_ACCEPTED, None, client_id=msg.node_id)
+        runner.send_message(MSG_ACCEPTED, control.payload(), client_id=msg.node_id)
+
+    def on_applied(environment, msg, **_kwargs):
+        control.record(msg.node_id, msg.data)
+        if msg.data.get("error"):
+            log.error("Worker %s 조절 적용 실패: %s", msg.node_id, msg.data)
+        else:
+            log.info("Worker %s 조절 적용: %s", msg.node_id, msg.data)
+
+    def publish():
+        runner.send_message(MSG_CONTROL, control.payload())
 
     runner.register_message(MSG_REGISTER, on_register)
+    runner.register_message(MSG_APPLIED, on_applied)
+    if environment.web_ui is not None:
+        add_routes(environment.web_ui, control, publish, alive)
+    else:
+        log.warning("웹 UI 없이 Master를 띄워 배율과 설정을 운영 중에 바꿀 수 없다")
     return registry
 
 
@@ -98,13 +125,21 @@ class WorkerGate:
         self.accepted = accepted
 
 
-def setup_worker(environment, pool: Pool) -> WorkerGate:
+def setup_worker(environment, pool: Pool, applier: Applier) -> WorkerGate:
     runner = environment.runner
     gate = WorkerGate(accepted=False)
 
+    def apply(payload):
+        runner.send_message(MSG_APPLIED, applier.apply(payload))
+
     def on_accepted(environment, msg, **_kwargs):
-        gate.accepted = True
         log.info("Master가 계정 풀 %s(%d-%d)를 승인했다", pool.name, pool.start, pool.end - 1)
+        # 현재 배율과 설정을 먼저 적용한다. 그 전에 문을 열면 시작 설정의 배율로 세션이 나갈 수 있다
+        apply(msg.data)
+        gate.accepted = True
+
+    def on_control(environment, msg, **_kwargs):
+        apply(msg.data)
 
     def on_rejected(environment, msg, **_kwargs):
         log.error("Master가 계정 풀을 거부해 종료한다: %s", msg.data["reason"])
@@ -114,5 +149,6 @@ def setup_worker(environment, pool: Pool) -> WorkerGate:
 
     runner.register_message(MSG_ACCEPTED, on_accepted)
     runner.register_message(MSG_REJECTED, on_rejected)
+    runner.register_message(MSG_CONTROL, on_control)
     runner.send_message(MSG_REGISTER, {"pool": pool.name, "start": pool.start, "end": pool.end})
     return gate
