@@ -56,6 +56,8 @@ ACCOUNTS: dict[int, Account] = {}
 STATES: dict[int, AccountState] = {}
 # User 생성이 한 번이라도 끝났는가. 그 전에는 User 수가 다 차지 않아 실행기 부족 경고를 하지 않는다
 SPAWNED = False
+# spawning_complete는 environment를 넘겨주지 않으므로 init에서 받아 둔다
+ENVIRONMENT = None
 
 
 def _warn_capacity(environment) -> None:
@@ -70,7 +72,8 @@ def _warn_capacity(environment) -> None:
 
 @events.init.add_listener
 def _on_init(environment, **_kwargs):
-    global STORE, SCHEDULER, GATE
+    global STORE, SCHEDULER, GATE, ENVIRONMENT
+    ENVIRONMENT = environment
     if isinstance(environment.runner, MasterRunner):
         setup_master(environment, Control(CONFIG.scale, CONFIG_TEXT, ENV))
         return
@@ -103,15 +106,16 @@ def _on_init(environment, **_kwargs):
 
 
 @events.spawning_complete.add_listener
-def _on_spawning_complete(environment, **_kwargs):
-    # 인자 user_count는 분산 실행에서 전체 Worker의 합계라 쓰지 않는다. Master에는 일정이 없어 확인하지 않는다
+def _on_spawning_complete(user_count, **_kwargs):
+    # Locust는 이 이벤트에 user_count만 넘긴다. 분산 실행에서는 전체 Worker의 합계라 쓰지 않고, 이 프로세스의
+    # User 수를 runner에서 읽는다. Master에는 일정이 없어 확인하지 않는다
     global SPAWNED
     if SCHEDULER is None:
         return
     SPAWNED = True
     # Master가 계정 범위를 승인하기 전이면 일정이 아직 없다. 세션은 실행하지 않고 일정만 만든다
     if not SCHEDULER.plan_if_needed():
-        _warn_capacity(environment)
+        _warn_capacity(ENVIRONMENT)
 
 
 @events.quitting.add_listener
