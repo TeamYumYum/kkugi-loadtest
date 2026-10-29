@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | 날짜 | 2026-10-29 |
-| 상태 | 일부 미결: `--enable-rebalancing` 채택(제안) |
+| 상태 | 결정: `--enable-rebalancing` 채택(→ [backend 준비 완료와 재분배 채택](2026-10-29-backend-ready.md)) |
 | 환경 | 노트북 Intel Core Ultra 9 185H(논리 CPU 22), Windows, Python 3.12, Locust 2.47.0 |
 
 ## 배경

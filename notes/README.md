@@ -49,4 +49,5 @@
 | 2026-10-29 | [트래픽 모양과 규모](decisions/2026-10-29-traffic-shape.md) | 일부 대체됨 |
 | 2026-10-29 | [세션 시각을 시간대별 표로 정한다](decisions/2026-10-29-hourly-table.md) | 결정 |
 | 2026-10-29 | [시작 규모와 관측 서버 부담](decisions/2026-10-29-start-scale-and-load.md) | 결정 |
-| 2026-10-29 | [로컬 테스트: User 재분배와 발생기 CPU](decisions/2026-10-29-local-tests.md) | 일부 미결 |
+| 2026-10-29 | [로컬 테스트: User 재분배와 발생기 CPU](decisions/2026-10-29-local-tests.md) | 결정 |
+| 2026-10-29 | [backend 준비 완료와 재분배 채택](decisions/2026-10-29-backend-ready.md) | 결정 |
