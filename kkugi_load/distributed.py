@@ -6,6 +6,7 @@ Locust Master는 Worker마다 User를 몇 개 돌릴지만 정하고 우리 계�
 - Worker는 시작할 때 자기 범위를 Master에 등록하고, 승인을 받기 전에는 세션을 실행하지 않는다.
 - 겹치면 Master가 나중에 등록한 Worker를 거부하고, 그 Worker는 스스로 종료한다.
 - 응답이 끊긴 Worker의 범위는 다시 쓸 수 있다. 같은 계정을 쓰는 Worker를 재시작할 때다.
+- Master는 --enable-rebalancing 없이 뜨면 종료한다. 없으면 끊긴 Worker의 User가 남은 Worker로 돌아가지 않는다.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
+import gevent
 from locust.runners import STATE_MISSING
 
 from kkugi_load.config import Pool
@@ -44,9 +46,33 @@ class PoolRegistry:
         return None
 
 
+def rebalancing_problem(parsed_options) -> str | None:
+    """Master 옵션에 --enable-rebalancing이 없으면 이유를 돌려준다. 옵션을 알 수 없으면 꺼진 것으로 본다."""
+    if getattr(parsed_options, "enable_rebalancing", False):
+        return None
+    return (
+        "--enable-rebalancing 없이 Master를 띄웠다. 이대로면 Worker가 끊길 때 그 Worker의 User가 "
+        "남은 Worker로 돌아가지 않아 실행기가 조용히 줄어든다"
+    )
+
+
 def setup_master(environment) -> PoolRegistry:
     runner = environment.runner
     registry = PoolRegistry()
+
+    problem = rebalancing_problem(environment.parsed_options)
+    if problem:
+        log.error("Master를 종료한다: %s", problem)
+        environment.process_exit_code = 1
+
+        def quit_master():
+            # 웹 UI가 init 뒤에 뜨므로 시작을 마친 다음 runner와 웹 UI를 함께 내린다
+            runner.quit()
+            if environment.web_ui is not None and environment.web_ui.greenlet is not None:
+                environment.web_ui.greenlet.kill(block=False)
+
+        gevent.spawn(quit_master)
+        return registry
 
     def alive(node_id: str) -> bool:
         client = runner.clients.get(node_id)
