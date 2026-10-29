@@ -158,7 +158,8 @@ KKUGI_POOL=base locust -f locustfile.py --worker --master-host 127.0.0.1
 KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 ```
 
-- Master의 User 수는 모든 Worker에 고르게 나뉩니다. 노트북 Worker를 붙일 때는 Master의 User 수도 함께 늘립니다. Worker가 새로 붙어도 Locust는 기본적으로 User를 다시 나누지 않습니다.
+- Master의 User 수는 연결된 Worker들에 고르게 나뉩니다. 노트북 Worker를 붙일 때는 Worker마다 충분한 User가 가도록 Master의 User 수도 함께 늘립니다.
+- Worker가 새로 붙으면 Locust가 User를 다시 나눕니다. 하지만 Worker가 응답 없이 끊기면, 기본 설정에서는 그 Worker의 User가 남은 Worker로 돌아가지 않아 전체 User 수가 줄어듭니다. Master를 `--enable-rebalancing`으로 띄우면 끊길 때도 다시 나눕니다(Locust 2.47.0, 로컬에서 확인).
 - Worker는 Master가 계정 범위를 승인하기 전에는 세션을 실행하지 않습니다. 겹친다고 거부된 Worker는 종료 코드 1로 끝납니다.
 - Master·Worker 연결 포트는 TCP 5557입니다. Windows에서는 `--processes`를 쓸 수 없으므로 Worker마다 프로세스를 따로 띄웁니다.
 
