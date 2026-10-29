@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | 날짜 | 2026-10-29 |
-| 상태 | 일부 미결: `--enable-rebalancing` 채택(제안), 관측 서버 실측 |
+| 상태 | 일부 미결: `--enable-rebalancing` 채택(제안) |
 | 환경 | 노트북 Intel Core Ultra 9 185H(논리 CPU 22), Windows, Python 3.12, Locust 2.47.0 |
 
 ## 배경
@@ -52,4 +52,44 @@ Master(User 10개)와 `base` Worker로 시작하고, 20초에 `peak-1` Worker를
 |---|---|---|
 | 20,000 (평균 약 6 RPS, 피크 약 22 RPS) | 코어 하나의 4~7% | 코어 하나의 13~26% |
 
-관측 서버가 크레딧을 깎지 않고 계속 쓸 수 있는 CPU는 코어 하나의 40%다(vCPU 2개 × 기준선 20%). 보수적으로 잡아도 발생기는 하루 평균으로 이 예산의 20% 아래를 쓴다. 이 추정은 관측 서버에서 같은 측정을 돌려 확인해야 한다.
+관측 서버가 크레딧을 깎지 않고 계속 쓸 수 있는 CPU는 코어 하나의 40%다(vCPU 2개 × 기준선 20%). 보수적으로 잡아도 발생기는 하루 평균으로 이 예산의 20% 아래를 쓴다.
+
+## 결과 3: 관측 서버에서 같은 측정
+
+같은 스크립트를 관측 서버(Lightsail Medium, Intel Xeon Platinum 8175M 2.5GHz, vCPU 2개)의 Docker 컨테이너(`python:3.12-slim`, `--cpus=1`)에서 돌렸다.
+
+| User 클래스 | 목표 RPS | 실제 RPS | 요청당 CPU | 코어 하나 대비 사용률 |
+|---|---|---|---|---|
+| `HttpUser` | 20 | 20.0 | 1.17ms | 2.3% |
+| `HttpUser` | 100 | 99.9 | 1.06ms | 10.6% |
+| `HttpUser` | 300 | 252.6 | 1.10ms | 27.9% |
+| `FastHttpUser` | 20 | 20.0 | 0.55ms | 1.1% |
+| `FastHttpUser` | 100 | 99.9 | 0.49ms | 4.9% |
+| `FastHttpUser` | 300 | 299.9 | 0.47ms | 14.1% |
+
+- **관측 서버가 노트북보다 요청당 CPU가 작았다.** 단일 스레드 점수도 53,547로 노트북(28,616~44,613)보다 높았다. 코어 성능 차이보다 운영체제 차이(Linux와 Windows)가 크게 작용한 것으로 보인다. 원인은 확인하지 않았다.
+- `HttpUser` 300 RPS는 252.6 RPS에 그쳤다. 코어 사용률이 28%라 발생기 CPU 때문은 아니다. 같은 컨테이너(CPU 1개)에서 돈 가짜 backend가 원인일 수 있다. 원인은 확인하지 않았다.
+- 측정하는 동안 관측 서버의 Lightsail CPU 사용률(5분 평균)은 3%에서 7~11%로 올랐고, 버스트 용량은 100% 근처를 유지했다.
+
+관측 서버 값으로 다시 계산한다. 실제 발생기는 HTTPS와 세션 코드 때문에 2~3배라고 가정하면 `HttpUser` 기준 요청당 약 2.2~3.3ms다.
+
+| 계정 수 | 하루 평균(약 6 RPS) | 피크(약 22 RPS) |
+|---|---|---|
+| 20,000 | 코어 하나의 1~2% | 코어 하나의 5~7% |
+
+하루 평균은 지속 가능 예산(코어 하나의 40%)의 약 5%다. **계정 20,000개까지 발생기 CPU는 관측 서버의 병목이 아니다.** 남은 위험은 수집(Tempo·Loki)과 backend 쪽이고, 계정 1,000개 실측에서 확인한다.
+
+## Lightsail 크레딧 조회 방법
+
+AWS CLI `kkugi` 프로필(IAM 사용자 `kkugi-member`)로 두 서버의 지표가 조회된다.
+
+```bash
+aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2 \
+  --instance-name kkugi-observability-lightsail --metric-name BurstCapacityPercentage \
+  --period 300 --start-time <UTC> --end-time <UTC> --unit Percent --statistics Minimum Average Maximum
+```
+
+- 지표: `BurstCapacityPercentage`(남은 크레딧 비율), `BurstCapacityTime`(남은 버스트 시간, 초), `CPUUtilization`
+- 응답 필드 이름은 소문자(`average`, `minimum`, `maximum`)다
+- 인스턴스: `kkugi-observability-lightsail`(medium_3_0), `kkugi-backend-lightsail`(large_3_0)
+- 2026-10-29 기준 최근 24시간: 두 서버 모두 버스트 용량 99% 이상, 평균 CPU 3~8%. 앱 서버는 최대 94~99%까지 치솟는 구간이 여러 번 있었다. 배포 빌드로 보이며 확인 필요다. 실측 중에 겹치면 걸러 봐야 한다
