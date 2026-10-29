@@ -12,3 +12,6 @@ state/
 
 # 개인 작업 공간
 summary/
+
+# 배포 값(도메인, 앱 서버 프라이빗 IP). deploy/.env.example을 복사해 쓴다
+deploy/.env

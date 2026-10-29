@@ -1,0 +1,29 @@
+# 이미지에는 실행에 필요한 코드(locustfile.py, kkugi_load/)와 설정(config/), requirements.txt만 넣는다
+
+# 저장소와 개발 환경
+.git
+.gitignore
+.dockerignore
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+pytest.ini
+tests/
+
+# 실행 상태와 통계. 토큰이 들어 있고, 컨테이너에서는 볼륨에 둔다
+state/
+stats/
+
+# 배포 설정과 비밀값. compose가 바깥에서 쓰는 파일이라 이미지에 필요 없다
+deploy/
+.env
+*.env
+Dockerfile
+
+# 개인 작업 공간과 문서. 저장소 루트의 위임 문서(*.md)도 뺀다. README.md만 남긴다
+notes/
+summary/
+*.md
+!README.md

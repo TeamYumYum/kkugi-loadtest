@@ -1,0 +1,37 @@
+# 운영 compose를 로컬 backend(HTTP, dev 로그인 켜짐)에 붙여 확인할 때 덮어쓰는 파일.
+# 운영 compose는 https://${APP_DOMAIN}으로 보내므로 로컬에서는 대상 주소와 이름 해석만 바꾼다.
+#
+#   docker compose -p kkugi-loadgen-local -f deploy/docker-compose.yml -f deploy/docker-compose.local.yml \
+#     --env-file <로컬 값 파일> up -d --build
+#   docker compose -p kkugi-loadgen-local -f deploy/docker-compose.yml -f deploy/docker-compose.local.yml \
+#     --env-file <로컬 값 파일> down -v
+#
+# 로컬 값 파일에도 APP_DOMAIN, APP_PRIVATE_IP는 있어야 한다(운영 파일이 필수로 검사한다). 아무 값이나 된다.
+# 프로젝트 이름(-p)을 운영과 다르게 두어 컨테이너와 볼륨이 섞이지 않게 한다.
+# 계정은 로컬 backend의 다른 확인과 겹치지 않게 100번부터 적게 쓰고, 일정은 immediate로 바로 실행한다.
+
+services:
+  master:
+    command:
+      - --master
+      - --enable-rebalancing
+      - --web-host=0.0.0.0
+      # 호스트에서 뜬 로컬 backend. Docker Desktop은 host.docker.internal을 호스트로 해석한다
+      - --host=${LOCAL_TARGET:-http://host.docker.internal:18080}
+      - --autostart
+      - --users=${KKUGI_USERS:-6}
+      - --spawn-rate=${KKUGI_SPAWN_RATE:-6}
+
+  worker-private:
+    # 로컬에서는 도메인 매핑이 필요 없다
+    extra_hosts: !reset []
+    environment:
+      KKUGI_SCHEDULE: immediate
+      KKUGI_ACCOUNT_START: "100"
+      KKUGI_ACCOUNT_COUNT: "5"
+
+  worker-public:
+    environment:
+      KKUGI_SCHEDULE: immediate
+      KKUGI_ACCOUNT_START: "105"
+      KKUGI_ACCOUNT_COUNT: "5"
