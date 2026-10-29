@@ -52,7 +52,7 @@ def _on_init(environment, **_kwargs):
     indexes = range(pool.start, pool.end)
     accounts = [build_account(CONFIG, i) for i in indexes]
     for account in accounts:
-        STATES[account.index] = STORE.load(account.email, account.index, account.persona)
+        STATES[account.index] = STORE.load(account.index, account.persona)
     ACCOUNTS.update({account.index: account for account in accounts})
     SCHEDULER = Scheduler(
         CONFIG, accounts, CONFIG.schedule_mode, CONFIG.max_lateness, lambda: datetime.now(CONFIG.tz), pool,

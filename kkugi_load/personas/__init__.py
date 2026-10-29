@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from kkugi_load.accounts.identity import Account, email_of, persona_of
+from kkugi_load.accounts.identity import Account, persona_of
 from kkugi_load.config import Config
 from kkugi_load.personas.base import Persona
 from kkugi_load.personas.dieter import Dieter
@@ -15,6 +15,6 @@ def build_account(config: Config, index: int) -> Account:
     if name not in PERSONAS:
         raise ValueError(f"설정에 있지만 구현하지 않은 페르소나: {name}")
     return Account(
-        index=index, email=email_of(config, index), persona=name,
+        index=index, persona=name,
         profile=PERSONAS[name].build_profile(config, index),
     )

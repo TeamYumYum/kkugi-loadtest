@@ -4,6 +4,7 @@
 - SESSION <이름>            세션 하나의 성공·실패와 걸린 시간(생각 시간 포함)
 - SESSION <이름> (skipped)  이미 기록해서 실행하지 않은 세션
 - SESSION [setup] <이름>    세션 전 계정 준비(로그인, 온보딩)가 실패한 세션
+- ACCOUNT withdrawn         계정이 바깥에서 탈퇴되어 세션을 끝냄(실패로 세지 않는다). 다음 세션이 새 이메일로 가입한다
 - SCHEDULE start_delay      계획 시각보다 늦게 시작한 정도
 - SCHEDULE missed           너무 늦어 실행하지 않은 세션(실패로 센다)
 """
@@ -16,7 +17,7 @@ import time
 from datetime import datetime
 from typing import Callable
 
-from kkugi_load.client.api import ApiError, KkugiApi
+from kkugi_load.client.api import AccountWithdrawn, ApiError, KkugiApi
 from kkugi_load.config import Config
 from kkugi_load.personas.base import PlannedSession
 from kkugi_load.sessions import meal_log, steps
@@ -27,7 +28,7 @@ log = logging.getLogger("kkugi")
 # 세션 종류 이름 → 실행 함수
 SESSIONS: dict[str, Callable] = {"meal_log": meal_log.run}
 
-OK, SKIPPED, FAILED = "ok", "skipped", "failed"
+OK, SKIPPED, FAILED, WITHDRAWN = "ok", "skipped", "failed", "withdrawn"
 
 
 def report_start_delay(events, delay_ms: float) -> None:
@@ -47,6 +48,15 @@ def report_missed(events, planned: PlannedSession, reason: str) -> None:
     log.warning("계정 %d %s 놓침: %s", planned.account_index, planned.name, reason)
 
 
+def report_withdrawn(events, planned: PlannedSession, started: float, e: AccountWithdrawn) -> None:
+    """탈퇴된 계정. 통계의 ACCOUNT withdrawn으로 본다. 서버는 정상 동작했으므로 실패로 세지 않는다."""
+    events.request.fire(
+        request_type="ACCOUNT", name="withdrawn", response_time=(time.perf_counter() - started) * 1000,
+        response_length=0, exception=None, context={"account": planned.account_index},
+    )
+    log.warning("계정 %d %s 중단: %s", planned.account_index, planned.name, e)
+
+
 def run_planned(events, api: KkugiApi, config: Config, planned: PlannedSession, rng: random.Random) -> str:
     def fire(name: str, started: float, exception: Exception | None) -> None:
         events.request.fire(
@@ -57,6 +67,9 @@ def run_planned(events, api: KkugiApi, config: Config, planned: PlannedSession, 
     started = time.perf_counter()
     try:
         steps.ensure_ready(api)
+    except AccountWithdrawn as e:
+        report_withdrawn(events, planned, started, e)
+        return WITHDRAWN
     except Exception as e:  # noqa: BLE001 실패를 통계에 남기고 다음 세션을 계속한다
         fire(f"[setup] {planned.name}", started, e)
         log.error("계정 %d 준비 실패(%s): %s", planned.account_index, planned.name, e)
@@ -70,6 +83,9 @@ def run_planned(events, api: KkugiApi, config: Config, planned: PlannedSession, 
         fire(f"{planned.name} (skipped)", started, None)
         log.info("계정 %d %s 건너뜀: %s", planned.account_index, planned.name, e)
         return SKIPPED
+    except AccountWithdrawn as e:
+        report_withdrawn(events, planned, started, e)
+        return WITHDRAWN
     except Exception as e:  # noqa: BLE001
         fire(planned.name, started, e)
         if isinstance(e, ApiError):

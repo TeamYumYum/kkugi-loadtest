@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from kkugi_load.accounts.identity import Account, meal_uuid, seeded_rng
+from kkugi_load.accounts.identity import Account, seeded_rng
 from kkugi_load.config import Config, hhmm
 from kkugi_load.personas.base import BodyProfile, Persona, PlannedSession, sample_body, time_between
 from kkugi_load.sessions.meal_log import MealInputs
@@ -48,7 +48,6 @@ class Dieter(Persona):
             at = time_between(rng, day, hhmm(meal["from"]), hhmm(meal["to"]), config.tz)
             inputs = MealInputs(
                 meal_type=meal_type,
-                client_uuid=meal_uuid(account.email, day, meal_type),
                 planned_at=at,
                 keywords=keywords,
                 # 검색 결과가 없을 때 이어서 검색할 단어

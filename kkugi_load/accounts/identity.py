@@ -2,6 +2,9 @@
 
 같은 시드와 계정 번호에서는 늘 같은 값이 나온다. 그래서 세션을 다시 실행해도 같은 식사 UUID가 나오고,
 서버의 clientUuid 멱등 처리로 중복 기록이 생기지 않는다.
+
+이메일만 계정 번호와 generation(탈퇴되어 다시 만든 횟수)으로 정한다. 식사 UUID는 이메일로 정하므로
+다시 만든 회원의 식사와 겹치지 않는다. 페르소나와 프로필은 계정 번호로만 정하므로 바뀌지 않는다.
 """
 
 from __future__ import annotations
@@ -14,6 +17,8 @@ from typing import Any
 
 from kkugi_load.config import Config
 
+# 이메일 번호 = generation × GENERATION_STRIDE + 계정 번호. 계정 번호는 이보다 작아야 한다
+GENERATION_STRIDE = 1_000_000
 # 식사 clientUuid를 만드는 이름공간. 바꾸면 이미 기록한 식사와 UUID가 달라진다
 MEAL_UUID_NAMESPACE = uuid.UUID("6f1c2a52-7c1e-4d0b-9a4e-3b8f5d2c7e10")
 MEAL_TYPES = ("BREAKFAST", "LUNCH", "DINNER", "SNACK")
@@ -22,7 +27,6 @@ MEAL_TYPES = ("BREAKFAST", "LUNCH", "DINNER", "SNACK")
 @dataclass(frozen=True)
 class Account:
     index: int
-    email: str
     persona: str
     # 페르소나가 정하는 프로필. body.onboarding_body()로 온보딩 요청 본문을 만든다
     profile: Any
@@ -32,8 +36,11 @@ def seeded_rng(seed: int, *parts: object) -> random.Random:
     return random.Random(":".join(str(p) for p in (seed, *parts)))
 
 
-def email_of(config: Config, index: int) -> str:
-    return f"{config.email_prefix}-{index:05d}@{config.email_domain}"
+def email_of(config: Config, index: int, generation: int = 0) -> str:
+    """계정의 지금 이메일. 탈퇴되면 generation이 올라 새 이메일로 새 회원이 된다."""
+    if not 0 <= index < GENERATION_STRIDE:
+        raise ValueError(f"계정 번호 {index}는 0 이상 {GENERATION_STRIDE} 미만이어야 한다")
+    return f"{config.email_prefix}-{generation * GENERATION_STRIDE + index:05d}@{config.email_domain}"
 
 
 def persona_of(config: Config, index: int) -> str:

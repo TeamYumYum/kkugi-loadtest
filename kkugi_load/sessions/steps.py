@@ -50,7 +50,7 @@ def search_foods(api: KkugiApi, keyword: str) -> list[dict]:
 def meals_of_day(api: KkugiApi, day: date) -> list[dict]:
     """그날 식사 목록. 발생기가 만들 수 없는 UUID가 있으면 다른 데이터가 섞인 것이다."""
     meals = api.call("GET", "/meals", name="GET /meals", params={"date": day.isoformat()}).data["meals"]
-    known = possible_meal_uuids(api.account.email, day)
+    known = possible_meal_uuids(api.email, day)
     unknown = [meal.get("clientUuid") for meal in meals if meal.get("clientUuid") not in known]
     if unknown:
         raise ValidationFailed(f"알 수 없는 식사 {unknown}")

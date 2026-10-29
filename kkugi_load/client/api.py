@@ -1,6 +1,9 @@
 """꾸기 backend 호출. 공통 응답 포장 해석, 토큰 관리, Locust 통계 이름을 맡는다.
 
 통계 이름에는 식별자를 넣지 않고 경로 템플릿을 쓴다(예: /daily-summaries/{date}).
+
+어느 요청에서든 401 MEMBER_WITHDRAWN을 받으면 바깥에서 탈퇴된 것이다. generation을 올려 다음 로그인이
+새 이메일로 새 회원을 만들게 하고, AccountWithdrawn으로 이번 세션을 끝낸다.
 """
 
 from __future__ import annotations
@@ -9,9 +12,9 @@ import base64
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NoReturn
 
-from kkugi_load.accounts.identity import Account
+from kkugi_load.accounts.identity import Account, email_of
 from kkugi_load.accounts.state import AccountState, StateStore
 from kkugi_load.config import Config
 
@@ -21,6 +24,16 @@ class ApiError(Exception):
         super().__init__(f"{name}: HTTP {status} {code or ''} {message}".strip())
         self.status = status
         self.code = code
+
+
+class AccountWithdrawn(Exception):
+    """계정이 바깥에서 탈퇴되었다. 상태는 이미 다음 generation으로 바꿔 저장했다."""
+
+    def __init__(self, account_index: int, old_email: str, new_email: str):
+        super().__init__(f"계정 {account_index} 탈퇴됨: {old_email} → 다음 세션은 {new_email}")
+        self.account_index = account_index
+        self.old_email = old_email
+        self.new_email = new_email
 
 
 @dataclass
@@ -68,6 +81,11 @@ class KkugiApi:
         self.state = state
         self.store = store
 
+    @property
+    def email(self) -> str:
+        """지금 generation의 이메일. 이메일이 필요한 곳은 모두 여기서 읽는다."""
+        return email_of(self.config, self.account.index, self.state.generation)
+
     # --- 요청 ---
 
     def call(
@@ -104,6 +122,10 @@ class KkugiApi:
             if code is not None and code in expect.allowed.get(status, set()):
                 response.success()
                 return Result(status, None, code)
+            if status == 401 and code == "MEMBER_WITHDRAWN":
+                # 서버는 정상 동작했다. 요청은 실패로 세지 않고 계정을 다음 generation으로 넘긴다
+                response.success()
+                self._withdrawn()
             response.failure(f"HTTP {status} {code or ''} {message}".strip())
             if auth and retry and status == 401 and code == "UNAUTHORIZED":
                 return None
@@ -122,7 +144,7 @@ class KkugiApi:
     def login(self) -> None:
         result = self.call(
             "POST", "/auth/login/dev", name="[auth] POST /auth/login/dev", auth=False,
-            json_body={"email": self.account.email},
+            json_body={"email": self.email},
         )
         data = result.data
         self.state.member_id = data["memberId"]
@@ -146,3 +168,12 @@ class KkugiApi:
                 self.store.save(self.state)
                 return
         self.login()
+
+    def _withdrawn(self) -> NoReturn:
+        old_email = self.email
+        state = self.state
+        state.generation += 1
+        state.member_id = state.access_token = state.refresh_token = None
+        state.onboarded = False
+        self.store.save(state)
+        raise AccountWithdrawn(self.account.index, old_email, self.email)
