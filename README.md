@@ -4,7 +4,7 @@
 
 계정마다 페르소나와 개인 특성을 배정하고, 식사 기록·음식 검색·요약 조회 등의 행동을 수행하도록 설계합니다. 일상적인 사용 패턴을 재현하는 상시 시뮬레이션과, 사용량을 높여 병목을 확인하는 부하 테스트를 함께 지원하는 것이 목표입니다.
 
-> 현재는 프로젝트 초기화 단계입니다. 아래 내용은 구현 방향이며, 실행 가능한 시나리오와 배포 설정은 아직 제공하지 않습니다.
+> 현재는 다이어터 페르소나와 식사 기록 세션만 구현했고, dev 로그인을 켠 로컬 backend에서만 검증했습니다. 서버 배포 설정과 지표 연동은 아직 없습니다.
 
 ## 목표
 
@@ -53,8 +53,8 @@
 Master는 실행을 제어하고 통계를 집계합니다. 실제 가상 사용자와 HTTP 요청은 Worker에서 실행합니다. 팀원 노트북의 Worker는 계획한 피크 부하 실험에 활용합니다.
 
 - Worker 추가는 트래픽 생성 자원을 늘리는 작업입니다. 실제 부하를 높이려면 활동 사용자 수나 세션 발생량도 함께 조절해야 합니다.
-- 계정을 Worker에 중복 배정하지 않도록 관리합니다. Worker 재시작이나 이탈 시 계정 상태가 자동 이전된다고 가정하지 않습니다.
-- 상시용 계정과 추가 부하용 계정을 구분하는 방안을 검토합니다. 구체적인 배정 및 복구 정책은 구현 시 정합니다.
+- 계정은 Worker가 설정의 계정 풀로 직접 맡습니다. Master는 Worker들의 계정 범위가 겹치는지만 확인하고, 겹치면 나중에 붙은 Worker를 거부합니다. Worker 재시작이나 이탈 시 계정 상태는 다른 Worker로 옮겨지지 않습니다.
+- 상시 Worker는 `base` 풀을, 노트북 Worker는 `peak-*` 풀을 씁니다. `peak-*` 풀의 계정은 피크 시간대에 계획된 세션만 실행합니다.
 - 성능 측정 시 발생기를 대상 앱 서버와 분리하는 것을 원칙으로 합니다. 관측 서버에 함께 배치한다면 지표 수집에 영향을 주지 않도록 자원 여유를 확인합니다.
 
 ## 첫 번째 시나리오: 다이어터의 점심 기록
@@ -106,7 +106,84 @@ Worker가 Master로 보고한 요청 통계를 서버 내부의 Prometheus·Graf
 
 ## 실행 안내
 
-실행 명령, 환경 변수, 의존성 설치 방법과 배포 절차는 첫 시나리오 구현과 함께 추가합니다. 인증 토큰과 비밀값은 저장소에 포함하지 않습니다.
+### 준비
+
+Python 3.12 이상이 필요합니다.
+
+```bash
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt   # macOS·Linux는 .venv/bin/python
+.venv/Scripts/python -m pytest
+```
+
+대상 backend는 개발용 이메일 로그인(`AUTH_DEV_LOGIN_ENABLED=true`)이 켜져 있어야 합니다. 운영 환경에서는 이 로그인이 꺼져 있으므로, 인공 사용자 전용 로그인이 준비되기 전까지는 로컬이나 개발 환경에서만 실행할 수 있습니다. 로컬 backend는 서비스 저장소의 `infra/docker-compose.yml`로 띄웁니다.
+
+### 구조
+
+| 위치 | 역할 |
+| --- | --- |
+| `kkugi_load/personas/` | 페르소나. 계정의 프로필과 하루 세션 일정을 정합니다. 페르소나마다 파일 하나입니다 |
+| `kkugi_load/sessions/` | 세션. 요청 흐름과 결과 검증입니다. 여러 페르소나가 함께 씁니다 |
+| `kkugi_load/scheduler.py` | 한 프로세스가 맡은 계정들의 세션을 시각순으로 내줍니다 |
+| `kkugi_load/accounts/` | 계정 번호에서 이메일·페르소나·식사 UUID를 정하고, 토큰 등 상태를 SQLite에 저장합니다 |
+| `kkugi_load/client/api.py` | backend 호출, 응답 해석, 토큰 재발급 |
+| `kkugi_load/distributed.py` | Master가 Worker들의 계정 범위가 겹치지 않는지 확인합니다 |
+| `config/default.toml` | 계정 풀, 페르소나 비율과 행동, 생각 시간 등 설정. "가정"으로 표시한 값은 확정 사양이 아닙니다 |
+
+새 페르소나는 `personas/`에 파일을 만들고 `personas/__init__.py`에 등록한 뒤, 설정에 `[personas.<이름>]`을 더합니다. 새 세션 종류는 `sessions/`에 만들고 `runner.py`의 `SESSIONS`에 등록합니다.
+
+### 실행 모델
+
+Locust User는 계정이 아니라 **실행기**입니다. 각 프로세스는 맡은 계정들의 하루 일정을 만들고, 실행기는 시각이 된 세션을 꺼내 실행합니다. 따라서 User 수(`-u`)는 동시에 진행할 수 있는 세션 수이며 계정 수와 다릅니다. 전체 RPS는 정하지 않으며, 트래픽은 계정 수와 페르소나의 일정에서 나옵니다.
+
+- `realtime`(기본): 계획 시각에 실행합니다. 발생기를 켜기 전에 지난 세션은 버리고, 계획보다 30분(설정값) 넘게 늦으면 놓친 세션으로 셉니다.
+- `immediate`: 오늘의 세션을 시각과 관계없이 바로 실행하고, 단독 실행에서는 모두 끝나면 종료합니다. 로컬 검증용입니다.
+
+한 계정의 세션은 동시에 둘 이상 실행하지 않습니다. 식사 UUID는 계정·날짜·끼니로 정해지므로, 이미 기록한 끼니는 저장하지 않고 `(skipped)`로 끝납니다.
+
+### 단독 실행
+
+```bash
+KKUGI_SCHEDULE=immediate KKUGI_ACCOUNT_START=0 KKUGI_ACCOUNT_COUNT=10   .venv/Scripts/python -m locust -f locustfile.py --headless -u 3 -r 3 -t 10m   --host http://127.0.0.1:8080
+```
+
+### 분산 실행
+
+```bash
+# 서버: Master와 상시 Worker
+locust -f locustfile.py --master --host https://<대상>
+KKUGI_POOL=base locust -f locustfile.py --worker --master-host 127.0.0.1
+
+# 팀원 노트북: 풀마다 하나씩, 다른 노트북과 겹치지 않게
+KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
+```
+
+- Master의 User 수는 모든 Worker에 고르게 나뉩니다. 노트북 Worker를 붙일 때는 Master의 User 수도 함께 늘립니다. Worker가 새로 붙어도 Locust는 기본적으로 User를 다시 나누지 않습니다.
+- Worker는 Master가 계정 범위를 승인하기 전에는 세션을 실행하지 않습니다. 겹친다고 거부된 Worker는 종료 코드 1로 끝납니다.
+- Master·Worker 연결 포트는 TCP 5557입니다. Windows에서는 `--processes`를 쓸 수 없으므로 Worker마다 프로세스를 따로 띄웁니다.
+
+| 환경 변수 | 기본값 | 의미 |
+| --- | --- | --- |
+| `KKUGI_POOL` | `base` | 이 Worker가 맡을 계정 풀 이름(`config/default.toml`의 `[pools.*]`) |
+| `KKUGI_ACCOUNT_START`, `KKUGI_ACCOUNT_COUNT` | 풀의 값 | 풀의 범위를 덮어씁니다. 로컬 검증용입니다 |
+| `KKUGI_SCHEDULE` | `realtime` | `realtime` 또는 `immediate` |
+| `KKUGI_STATE_DB` | `state/accounts.db` | 계정 상태(토큰 포함) SQLite 파일. 저장소에 올리지 않습니다 |
+| `KKUGI_CONFIG` | `config/default.toml` | 설정 파일 |
+
+### 통계 읽는 법
+
+| 이름 | 의미 |
+| --- | --- |
+| `GET /...`, `POST /...` | 세션 안의 요청. 경로는 식별자 없이 템플릿으로 남깁니다 |
+| `[auth] ...`, `[setup] ...` | 토큰 발급과 계정 준비(온보딩). 세션 요청과 나눠 봅니다 |
+| `SESSION <페르소나>_<끼니>` | 세션 하나의 성공·실패와 걸린 시간(생각 시간 포함). 업무 결과 검증 실패도 여기서 실패로 셉니다 |
+| `SESSION ... (skipped)` | 이미 기록한 끼니라 저장하지 않은 세션 |
+| `SCHEDULE start_delay` | 계획 시각보다 늦게 시작한 정도. 실행기가 모자라면 늘어납니다 |
+| `SCHEDULE missed` | 너무 늦어 실행하지 않은 세션(실패로 셉니다) |
+
+식사 세션은 저장한 식사의 UUID·끼니·음식·양·날짜, 다른 데이터가 섞이지 않았는지, 요약의 섭취 칼로리가 저장한 식사만큼 늘었는지를 확인합니다.
+
+인증 토큰과 비밀값은 저장소에 포함하지 않습니다.
 
 ## 참고
 

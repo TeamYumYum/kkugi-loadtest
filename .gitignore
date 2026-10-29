@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 발생기 실행 상태(토큰 포함). 저장소에 올리지 않는다
+state/
+
+# 로컬 비밀값
+.env
+
+# 개인 작업 공간
+notes/
+summary/
