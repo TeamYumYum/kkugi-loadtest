@@ -113,3 +113,66 @@ def test_worker_applies_accepted_payload_before_opening_gate_and_reports():
     runner.handlers[MSG_CONTROL](environment=None, msg=SimpleNamespace(data={**payload, "scale": 0.0}))
     applied = [data for msg_type, data, _ in runner.sent if msg_type == MSG_APPLIED]
     assert applied == [{"scale": 0.3, "version": 1, "error": None}, {"scale": 0.0, "version": 1, "error": None}]
+
+
+class _FakeEvent:
+    def __init__(self):
+        self.listeners = []
+
+    def add_listener(self, listener):
+        self.listeners.append(listener)
+
+    def fire(self, **kwargs):
+        for listener in self.listeners:
+            listener(**kwargs)
+
+
+class _FakeRunner:
+    def __init__(self, state, ready):
+        self.state = state
+        self.clients = SimpleNamespace(ready=ready)
+        self.started = []
+
+    def start(self, users, rate):
+        self.started.append((users, rate))
+        self.state = "running"
+
+
+def _resume_env(state, ready, autostart=True):
+    events = SimpleNamespace(worker_connect=_FakeEvent())
+    options = SimpleNamespace(autostart=autostart, num_users=12, spawn_rate=3.0)
+    return SimpleNamespace(parsed_options=options, runner=_FakeRunner(state, ready), events=events)
+
+
+def _connect_and_wait(env, monkeypatch):
+    import gevent
+
+    from kkugi_load import distributed
+
+    monkeypatch.setattr(distributed, "RESUME_POLL_SECONDS", 0.01)
+    distributed.resume_when_workers_return(env)
+    env.events.worker_connect.fire(client_id="w1")
+    gevent.sleep(0.1)
+
+
+def test_stopped_master_restarts_when_a_worker_returns(monkeypatch):
+    from locust.runners import STATE_STOPPED
+
+    env = _resume_env(STATE_STOPPED, ready=["w1"])
+    _connect_and_wait(env, monkeypatch)
+    assert env.runner.started == [(12, 3.0)]
+
+
+def test_running_master_is_not_restarted(monkeypatch):
+    env = _resume_env("running", ready=["w1"])
+    _connect_and_wait(env, monkeypatch)
+    assert env.runner.started == []
+
+
+def test_master_without_autostart_is_not_restarted(monkeypatch):
+    from locust.runners import STATE_STOPPED
+
+    env = _resume_env(STATE_STOPPED, ready=["w1"], autostart=False)
+    _connect_and_wait(env, monkeypatch)
+    assert env.runner.started == []
+    assert env.events.worker_connect.listeners == []

@@ -45,7 +45,7 @@ from kkugi_load.accounts.identity import Account
 from kkugi_load.accounts.state import AccountState, StateStore
 from kkugi_load.client.api import KkugiApi
 from kkugi_load.control import Applier, Control, add_routes
-from kkugi_load.distributed import WorkerGate, setup_master, setup_worker
+from kkugi_load.distributed import WorkerGate, resume_when_workers_return, setup_master, setup_worker
 from kkugi_load.personas import build_account
 from kkugi_load.runner import report_missed, report_scaled_out, report_start_delay, run_planned
 from kkugi_load.scheduler import Due, Scheduler
@@ -90,6 +90,7 @@ def _on_init(environment, **_kwargs):
         # None이면 --enable-rebalancing이 없어 Master를 내리는 중이다
         if publish is not None:
             governor.start(environment, control, publish)
+            resume_when_workers_return(environment)
         return
     pool = CONFIG.pool
     STORE = StateStore(CONFIG.state_db)
