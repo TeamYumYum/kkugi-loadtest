@@ -87,8 +87,6 @@ select_max = 4.0
 weight = 35
 # 페르소나 활동 배수. 공통 표의 확률에 곱한다. 필수 값이다
 activity = 1.0
-# 하루에 앱을 쓰는 확률. 가정
-active_probability = 0.8
 # 한 끼의 음식 수와 음식당 양(그램). 가정
 items_per_meal = 2
 grams_min = 100
@@ -99,18 +97,20 @@ preferred_keywords = 4
 breakfast_keywords = ["오트밀", "요거트", "바나나", "사과", "토스트", "달걀", "고구마", "우유"]
 main_keywords = ["김밥", "비빔밥", "샐러드", "닭가슴살", "된장찌개", "김치찌개", "현미밥", "두부", "샌드위치", "제육볶음"]
 
-# 끼니별 기록 확률과 식사 시각 범위(한국 시간). 활동한 날 기준이다. 가정
+# 끼니 창(한국 시간, from 이상 to 미만)과 기록 확률. 창은 [traffic] 표의 피크와 앞뒤 완충 시간대에 맞춘다.
+# 그 끼니 창에서 그날 처음 연 세션이 이 확률로 식사 기록 세션이 된다. 나머지 세션은 모두 조회 세션이다.
+# 그래서 끼니마다 식사 기록은 하루 최대 한 번이다. 확률 값은 가정
 [personas.dieter.meals.BREAKFAST]
 probability = 0.6
-from = "07:00"
-to = "08:30"
+from = "06:00"
+to = "09:00"
 
 [personas.dieter.meals.LUNCH]
 probability = 0.95
-from = "11:40"
-to = "13:10"
+from = "11:00"
+to = "14:00"
 
 [personas.dieter.meals.DINNER]
 probability = 0.9
-from = "18:00"
+from = "17:00"
 to = "20:00"

@@ -57,23 +57,28 @@ def test_day_plan_is_deterministic_and_sorted():
 
 def test_dieter_meals_follow_settings():
     settings = CONFIG.personas["dieter"]
-    active_days = 0
+    meals = 0
     for index in range(300):
         account, plan = _plan(index)
-        active_days += bool(plan)
         for session in plan:
+            if session.session == "view":
+                assert session.name == "dieter_view"
+                assert session.inputs.planned_at == session.at
+                continue
+            meals += 1
             meal = session.inputs
             window = settings["meals"][meal.meal_type]
+            assert session.session == "meal_log"
             assert session.name == f"dieter_{meal.meal_type.lower()}"
-            assert window["from"] <= meal.planned_at.strftime("%H:%M") <= window["to"]
+            assert window["from"] <= meal.planned_at.strftime("%H:%M") < window["to"]
             assert meal.planned_at.tzinfo == CONFIG.tz
             assert len(meal.keywords) == settings["items_per_meal"]
             assert not set(meal.keywords) & set(meal.fallback_keywords)
             assert all(settings["grams_min"] <= g <= settings["grams_max"] for g in meal.grams)
             if meal.meal_type != "BREAKFAST":
                 assert set(meal.keywords) <= set(account.profile.preferred_keywords)
-    # 활동 확률 0.8(가정)
-    assert 0.7 < active_days / 300 < 0.9
+    # 끼니마다 기록 확률(가정)로 남으므로 300명이면 식사 기록이 충분히 나온다
+    assert meals > 300
 
 
 def test_meal_uuid_changes_per_day_and_type():

@@ -117,4 +117,8 @@ def test_pool_hours_limit_planned_sessions():
     clock = Clock(datetime.combine(DAY, datetime.min.time(), TZ))
     scheduler = Scheduler(CONFIG, accounts, IMMEDIATE, LATENESS, clock, lunch_only)
     items = _drain(scheduler)
-    assert items and all(i.planned.name == "dieter_lunch" for i in items)
+    # 점심 창 안이므로 점심 기록이나 조회만 남는다
+    assert items and all(i.planned.name in ("dieter_lunch", "dieter_view") for i in items)
+    assert all(time(11, 30) <= i.planned.at.time() < time(13, 30) for i in items)
+    expected = [p for a in accounts for p in _plan(a) if time(11, 30) <= p.at.time() < time(13, 30)]
+    assert len(items) == len(expected)
