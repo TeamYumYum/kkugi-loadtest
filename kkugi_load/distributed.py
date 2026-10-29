@@ -7,6 +7,9 @@ Locust Master는 Worker마다 User를 몇 개 돌릴지만 정하고 우리 계�
 - 겹치면 Master가 나중에 등록한 Worker를 거부하고, 그 Worker는 스스로 종료한다.
 - 응답이 끊긴 Worker의 범위는 다시 쓸 수 있다. 같은 계정을 쓰는 Worker를 재시작할 때다.
 - Master는 --enable-rebalancing 없이 뜨면 종료한다. 없으면 끊긴 Worker의 User가 남은 Worker로 돌아가지 않는다.
+- Locust는 마지막 Worker가 빠지면 테스트를 멈추고, --autostart는 처음 한 번만 시작한다. 그래서 Worker를 모두
+  재시작하면 다시 붙어도 User가 0인 채로 남는다. --autostart로 띄운 Master는 멈춘 상태에서 Worker가 다시 붙으면
+  같은 User 수로 다시 시작한다(resume_when_workers_return).
 
 운영 중 조절(kkugi_load/control.py)도 같은 통로로 보낸다.
 - 승인 메시지(MSG_ACCEPTED)에 Control.payload()를 싣는다. 나중에 붙은 Worker도 현재 배율과 (다시 읽은 적이
@@ -26,7 +29,7 @@ import logging
 from typing import Callable
 
 import gevent
-from locust.runners import STATE_MISSING
+from locust.runners import STATE_MISSING, STATE_STOPPED
 
 from kkugi_load.config import Pool
 from kkugi_load.control import Applier, Control, add_routes
@@ -160,3 +163,45 @@ def setup_worker(environment, pool: Pool, applier: Applier) -> WorkerGate:
     runner.register_message(MSG_CONTROL, on_control)
     runner.send_message(MSG_REGISTER, {"pool": pool.name, "start": pool.start, "end": pool.end})
     return gate
+
+
+# Worker가 붙은 뒤 준비(ready)를 알릴 때까지 기다리는 간격과 횟수. Worker는 계정 상태를 읽고 준비를 알린다
+RESUME_POLL_SECONDS = 5.0
+RESUME_POLL_TIMES = 24
+
+
+def resume_when_workers_return(environment) -> None:
+    """--autostart로 띄운 Master가 Worker를 모두 잃어 멈췄다면, Worker가 다시 붙을 때 같은 User 수로 다시 시작한다.
+
+    사람 없이 며칠씩 돌리므로, Worker 둘을 함께 재시작하거나 둘 다 죽었을 때 User가 0인 채로 남지 않게 한다.
+    Locust 웹 UI의 정지 버튼으로 멈춘 경우도 Worker가 다시 붙으면 다시 시작하므로, 트래픽은 /kkugi/stop(배율 0)으로 멈춘다.
+    """
+    options = environment.parsed_options
+    if not getattr(options, "autostart", False):
+        return
+    runner = environment.runner
+    # 이미 기다리는 중이면 다시 띄우지 않는다
+    waiting = {"active": False}
+
+    def resume():
+        try:
+            for _ in range(RESUME_POLL_TIMES):
+                gevent.sleep(RESUME_POLL_SECONDS)
+                if runner.state != STATE_STOPPED:
+                    return
+                if runner.clients.ready:
+                    log.warning(
+                        "Worker가 모두 빠져 멈춘 테스트를 다시 시작한다: User %s개, 초당 %s개",
+                        options.num_users, options.spawn_rate,
+                    )
+                    runner.start(options.num_users, options.spawn_rate)
+                    return
+        finally:
+            waiting["active"] = False
+
+    def on_worker_connect(client_id, **_kwargs):
+        if runner.state == STATE_STOPPED and not waiting["active"]:
+            waiting["active"] = True
+            gevent.spawn(resume)
+
+    environment.events.worker_connect.add_listener(on_worker_connect)

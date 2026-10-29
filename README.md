@@ -40,12 +40,13 @@
 ## 분산 실행 구조
 
 ```text
-상시 실행 서버
- ├─ Master 프로세스 1개
- └─ Worker 프로세스 1개 ──┐
-                         │
-팀원 노트북               ├─ 각 Worker가 대상 앱 서버로 직접 요청
- └─ 추가 Worker들 ────────┘
+관측 서버(deploy/docker-compose.yml)
+ ├─ master
+ ├─ worker-private (base 풀) ── 앱 서버 프라이빗 IP:443 ──┐
+ └─ worker-public  (public 풀) ─ 공인 주소 ───────────────┤
+                                                          ├─ nginx ─ backend
+팀원 노트북(SSH 터널로 Master에 연결)                       │
+ └─ 추가 Worker들 (peak-* 풀) ── 공인 주소 ────────────────┘
 
 모든 Worker → 같은 Master에 연결하여 통계와 상태 보고
 ```
@@ -54,7 +55,8 @@ Master는 실행을 제어하고 통계를 집계합니다. 실제 가상 사용
 
 - Worker 추가는 트래픽 생성 자원을 늘리는 작업입니다. 실제 부하를 높이려면 활동 사용자 수나 세션 발생량도 함께 조절해야 합니다.
 - 계정은 Worker가 설정의 계정 풀로 직접 맡습니다. Master는 Worker들의 계정 범위가 겹치는지만 확인하고, 겹치면 나중에 붙은 Worker를 거부합니다. Worker 재시작이나 이탈 시 계정 상태는 다른 Worker로 옮겨지지 않습니다.
-- 상시 Worker는 `base` 풀을, 노트북 Worker는 `peak-*` 풀을 씁니다. `peak-*` 풀의 계정은 피크 시간대에 계획된 세션만 실행합니다.
+- 상시 Worker는 둘입니다. 프라이빗 경로 Worker는 `base` 풀(0-949)을, 공인 경로 Worker는 `public` 풀(950-999)을 맡습니다. 요청의 95%를 앱 서버 프라이빗 IP로, 5%를 공인 주소로 보내기 위해서이고, 계정 수를 늘릴 때 두 풀을 95:5로 함께 늘립니다([결정 기록](notes/decisions/2026-10-29-route-split.md)).
+- 노트북 Worker는 `peak-*` 풀을 씁니다. `peak-*` 풀의 계정은 피크 시간대에 계획된 세션만 실행합니다.
 - 성능 측정 시 발생기를 대상 앱 서버와 분리하는 것을 원칙으로 합니다. 관측 서버에 함께 배치한다면 지표 수집에 영향을 주지 않도록 자원 여유를 확인합니다.
 
 ## 첫 번째 시나리오: 다이어터의 점심 기록
@@ -150,7 +152,7 @@ Locust User는 계정이 아니라 **실행기**입니다. 각 프로세스는 �
 
 다이어터는 끼니 창(아침 06~09시, 점심 11~14시, 저녁 17~20시) 안에서 그날 처음 연 세션을 그 끼니의 `probability`로 식사 기록 세션으로 만들고, 나머지는 모두 조회 세션으로 만듭니다. 끼니마다 식사 기록은 하루 최대 한 번입니다.
 
-**실행기 수.** 각 Worker(또는 단독 실행)는 일정을 만들 때 필요한 실행기 수를 추정해 일정 로그에 남깁니다. 시간대별 `Σ(세션 수 × 평균 길이) ÷ 3600`의 최댓값에 여유 2배를 곱해 올림합니다. 평균 길이는 추정값으로, 식사 기록은 `음식 수 × (검색 + 선택 생각 시간 평균) + 1초`(기본 설정 약 14초), 조회는 1초입니다. User 생성이 끝났을 때와 날짜가 바뀌어 새 일정을 만들었을 때 그 프로세스의 User 수가 이보다 적으면 경고합니다. 지금 설정에서는 계정 1,000개에 약 3개, 20,000개에 약 56개입니다.
+**실행기 수.** 각 Worker(또는 단독 실행)는 일정을 만들 때 필요한 실행기 수를 추정해 일정 로그에 남깁니다. 시간대별 `Σ(세션 수 × 평균 길이) ÷ 3600`의 최댓값에 여유 2배를 곱해 올림합니다. 평균 길이는 추정값으로, 식사 기록은 `음식 수 × (검색 + 선택 생각 시간 평균) + 1초`(기본 설정 약 14초), 조회는 1초입니다. User 생성이 끝났을 때와 날짜가 바뀌어 새 일정을 만들었을 때 그 프로세스의 User 수가 이보다 적으면 경고합니다. 지금 설정에서는 계정 1,000개에 약 3개, 20,000개에 약 56개입니다. Master는 User를 Worker 수대로 고르게 나누므로, Master의 User 수는 `base` Worker의 필요량에 Worker 수를 곱한 값 이상으로 둡니다.
 
 한 계정의 세션은 동시에 둘 이상 실행하지 않습니다. 식사 UUID는 계정·날짜·끼니로 정해지므로, 이미 기록한 끼니는 저장하지 않고 `(skipped)`로 끝납니다.
 
@@ -163,9 +165,10 @@ KKUGI_SCHEDULE=immediate KKUGI_ACCOUNT_START=0 KKUGI_ACCOUNT_COUNT=10   .venv/Sc
 ### 분산 실행
 
 ```bash
-# 서버: Master와 상시 Worker
+# 서버에서는 아래 "서버 운영"의 compose를 씁니다. 같은 구성을 직접 띄우면 다음과 같습니다
 locust -f locustfile.py --master --enable-rebalancing --web-host 127.0.0.1   --csv state/stats/kkugi --csv-full-history --host https://<대상>
 KKUGI_POOL=base locust -f locustfile.py --worker --master-host 127.0.0.1
+KKUGI_POOL=public KKUGI_ROUTE=public KKUGI_STATE_DB=state/public.db locust -f locustfile.py --worker --master-host 127.0.0.1
 
 # 팀원 노트북: 풀마다 하나씩, 다른 노트북과 겹치지 않게
 KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
@@ -174,7 +177,7 @@ KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 - Master의 User 수는 연결된 Worker들에 고르게 나뉩니다. 노트북 Worker를 붙일 때는 Worker마다 충분한 User가 가도록 Master의 User 수도 함께 늘립니다.
 - Worker가 새로 붙으면 Locust가 User를 다시 나눕니다. 하지만 Worker가 응답 없이 끊기면, 기본 설정에서는 그 Worker의 User가 남은 Worker로 돌아가지 않아 전체 User 수가 줄어듭니다. Master를 `--enable-rebalancing`으로 띄우면 끊길 때도 다시 나눕니다(Locust 2.47.0, 로컬에서 확인). 이 옵션 없이 띄운 Master는 이유를 로그에 남기고 종료 코드 1로 끝납니다.
 - Worker는 Master가 계정 범위를 승인하기 전에는 세션을 실행하지 않습니다. 겹친다고 거부된 Worker는 종료 코드 1로 끝납니다.
-- 통계는 Master에 모입니다. `--csv`와 `--csv-full-history`를 주면 `kkugi_stats.csv`(누적), `kkugi_stats_history.csv`(API별 기록), `kkugi_failures.csv`, `kkugi_exceptions.csv`를 남깁니다. 기록 간격은 60초입니다(Locust 기본값 1초를 `locustfile.py`에서 바꿨습니다). 실측 기간의 클라이언트 응답 시간, 세션 결과, 놓친 세션은 이 파일로 보고, 서버 쪽 요청 양·응답 시간·오류는 backend 지표의 `synthetic` 태그로 봅니다.
+- 통계는 Master에 모입니다. `--csv <이름>`과 `--csv-full-history`를 주면 `<이름>_stats.csv`(누적), `<이름>_stats_history.csv`(API별 기록), `<이름>_failures.csv`, `<이름>_exceptions.csv`를 남깁니다. 기록 간격은 60초이고, 종료할 때 마지막 값을 한 번 더 씁니다(`kkugi_load/csv_stats.py`). Locust는 시작할 때 같은 이름의 파일을 비우므로, 서버 compose는 이름에 시작 시각을 붙입니다. 실측 기간의 클라이언트 응답 시간, 세션 결과, 놓친 세션은 이 파일로 보고, 서버 쪽 요청 양·응답 시간·오류는 backend 지표의 `synthetic` 태그로 봅니다.
 - Master·Worker 연결 포트는 TCP 5557입니다. Windows에서는 `--processes`를 쓸 수 없으므로 Worker마다 프로세스를 따로 띄웁니다.
 
 | 환경 변수 | 기본값 | 의미 |
@@ -182,6 +185,7 @@ KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 | `KKUGI_POOL` | `base` | 이 Worker가 맡을 계정 풀 이름(`config/default.toml`의 `[pools.*]`) |
 | `KKUGI_ACCOUNT_START`, `KKUGI_ACCOUNT_COUNT` | 풀의 값 | 풀의 범위를 덮어씁니다. 로컬 검증용입니다 |
 | `KKUGI_SCHEDULE` | `realtime` | `realtime` 또는 `immediate` |
+| `KKUGI_ROUTE` | 없음 | 경로 표시. 값이 있으면 이 Worker의 HTTP 요청 통계 이름 앞에 `[값]`을 붙입니다(예: `[public] GET /foods`). 영문 소문자·숫자·하이픈만 씁니다. 경로 자체는 컨테이너의 이름 해석이 정하고, 이 값은 통계를 나눠 보는 용도입니다. 세션·일정·계정 통계에는 붙이지 않습니다 |
 | `KKUGI_STATE_DB` | `state/accounts.db` | 계정 상태(generation, 토큰, 회원 ID, 온보딩 여부) SQLite 파일. 계정 번호가 키입니다. 옛 형식 파일이면 시작하지 않으니 지우고 다시 시작합니다. 저장소에 올리지 않습니다 |
 | `KKUGI_CONFIG` | `config/default.toml` | 설정 파일 |
 
@@ -207,6 +211,62 @@ curl -X POST http://localhost:8089/kkugi/reload           # 설정 파일 다시
   - 사람이 배율을 정하면 거버너는 그 값에서 다시 시작합니다. 상태와 마지막으로 바꾼 이유는 `GET /kkugi/control`의 `governor`에서 보고, 배율을 바꿀 때마다 이유를 로그에 남깁니다.
   - `[governor]`는 `/kkugi/reload`로 바꿀 수 있습니다. `enabled = false`로 끄면 사람이 정한 배율로 되돌립니다.
 - 나중에 붙은 Worker는 계정 범위를 승인받을 때 현재 배율과 다시 읽은 설정을 함께 받고, 그것을 적용한 뒤에 세션을 실행합니다.
+
+### 서버 운영
+
+관측 서버(`ssh kkugi-obs`)에 `deploy/docker-compose.yml`로 Master 1개와 Worker 2개(`worker-private`, `worker-public`)를 띄웁니다. 명령은 모두 서버의 저장소 루트에서 실행합니다.
+
+**처음 준비.** `deploy/.env.example`을 `deploy/.env`로 복사하고 값을 채웁니다. `.env`에는 앱 서버 프라이빗 IP가 들어가므로 커밋하지 않습니다.
+
+| 값 | 뜻 |
+| --- | --- |
+| `APP_DOMAIN` | 대상 도메인. 두 Worker 모두 `https://<도메인>`으로 보냅니다 |
+| `APP_PRIVATE_IP` | 앱 서버 프라이빗 IP. `worker-private`만 도메인을 이 주소로 해석합니다 |
+| `KKUGI_USERS`, `KKUGI_SPAWN_RATE` | Master가 띄우는 전체 User 수와 초당 생성 수 |
+
+**시작과 갱신.** 코드나 설정을 바꾼 뒤에도 같은 명령입니다. Master는 `--autostart`로 Worker가 붙으면 바로 User를 띄웁니다.
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml ps
+docker stats --no-stream
+```
+
+**멈추기.**
+
+- 트래픽만 멈출 때: `curl -X POST http://localhost:8089/kkugi/stop`. 배율이 0이 되고 컨테이너는 그대로입니다. 다시 보내려면 `/kkugi/scale`로 배율을 올립니다.
+- 모두 내릴 때: `docker compose -f deploy/docker-compose.yml down`. `down -v`는 상태 DB와 통계 CSV를 지우므로 쓰지 않습니다.
+- Locust 웹 UI의 정지 버튼은 쓰지 않습니다. Master는 Worker가 모두 빠져 멈췄다가 Worker가 다시 붙으면 같은 User 수로 다시 시작하는데, 정지 버튼으로 멈춘 경우도 같은 방식으로 다시 시작될 수 있습니다.
+
+**조절과 설정 다시 읽기.** 노트북에서 터널을 연 뒤 "운영 중 조절"의 명령을 그대로 씁니다. 설정을 바꿀 때는 서버의 `config/default.toml`을 고치고 `/kkugi/reload`를 보냅니다. 세 컨테이너가 같은 `config/`를 읽기 전용으로 마운트합니다.
+
+```bash
+ssh -L 8089:localhost:8089 -L 5557:localhost:5557 kkugi-obs
+```
+
+**노트북 Worker 붙이기.** 위 터널을 연 상태에서, 노트북마다 다른 `peak-*` 풀로 띄웁니다. 붙이기 전에 웹 UI나 `/swarm`으로 Master의 User 수를 늘립니다(Worker 3개면 필요량의 세 배 이상).
+
+```bash
+KKUGI_POOL=peak-1 KKUGI_STATE_DB=state/peak-1.db .venv/Scripts/python -m locust -f locustfile.py --worker --master-host 127.0.0.1
+```
+
+**로그와 통계.** 로그는 컨테이너마다 최대 50MB까지 순환합니다. 통계 CSV는 `stats` 볼륨에 Master가 시작할 때마다 `kkugi-<YYYYmmdd-HHMMSS>_*.csv`로 새로 생깁니다.
+
+```bash
+docker compose -f deploy/docker-compose.yml logs -f --since 10m master
+docker compose -f deploy/docker-compose.yml exec master ls -l /app/stats
+docker compose -f deploy/docker-compose.yml cp master:/app/stats ./stats-backup
+```
+
+**서버 자원.** 컨테이너별 CPU와 메모리는 `docker stats`로, 서버 CPU와 버스트 크레딧은 Lightsail 콘솔이나 노트북의 AWS CLI로 봅니다. 앱 서버는 `--instance-name kkugi-backend-lightsail`로 봅니다.
+
+```bash
+aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2   --instance-name kkugi-observability-lightsail --metric-name BurstCapacityPercentage   --period 300 --statistics Average --unit Percent   --start-time "$(date -u -d '-1 hour' +%FT%TZ)" --end-time "$(date -u +%FT%TZ)"
+```
+
+**되돌리기.** 발생기를 내리려면 `down`만 하면 됩니다. 인공 계정이 쓰는 dev 로그인은 앱 서버 `infra/.env`의 `AUTH_DEV_LOGIN_ENABLED`로 끕니다(서비스 저장소 담당).
+
+**로컬에서 같은 구성 확인.** `deploy/docker-compose.local.yml`을 겹치면 대상이 로컬 backend(`http://host.docker.internal:18080`)로 바뀝니다. 사용법은 파일 머리 주석에 있습니다.
 
 ### 통계 읽는 법
 

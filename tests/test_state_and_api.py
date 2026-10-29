@@ -57,7 +57,7 @@ def test_jwt_expiry_is_read_without_verification():
 
 def test_config_reads_pool_and_overrides():
     base = config_module.load({})
-    assert (base.pool.name, base.pool.start, base.pool.end) == ("base", 0, 1000)
+    assert (base.pool.name, base.pool.start, base.pool.end) == ("base", 0, 950)
     assert base.synthetic_header == ("X-Synthetic-Traffic", "1")
     peak = config_module.load({"KKUGI_POOL": "peak-1"})
     assert peak.pool.start == 10000 and peak.pool.only_between

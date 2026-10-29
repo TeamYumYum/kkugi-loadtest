@@ -1,0 +1,125 @@
+# 관측 서버에 띄우는 인공 트래픽 발생기. Master 하나와 상시 Worker 둘이다.
+#
+#   master          통계 집계, 계정 범위 확인, 웹 UI와 조절 경로(/kkugi/*), 거버너. 세션은 실행하지 않는다
+#   worker-private  계정 풀 base. 도메인을 앱 서버 프라이빗 IP로 매핑해 프라이빗 경로로 보낸다
+#   worker-public   계정 풀 public. 매핑 없이 공인 주소로 보낸다
+#
+# 두 Worker의 대상 주소는 같은 https://${APP_DOMAIN}이고 차이는 컨테이너의 이름 해석뿐이다
+# (notes/decisions/2026-10-29-route-split.md).
+#
+# 값은 이 폴더의 .env에서 읽는다(.env.example 참고, 커밋하지 않는다). 실행은 저장소 루트에서
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# 웹 UI(8089)와 Master 포트(5557)는 서버의 127.0.0.1에만 연다. 운영자와 팀원 노트북 Worker는 SSH 터널로 붙는다
+#   ssh -L 8089:localhost:8089 -L 5557:localhost:5557 kkugi-obs
+
+name: kkugi-loadgen
+
+# 세 컨테이너가 함께 쓰는 값
+x-common: &common
+  # 같은 이미지를 세 컨테이너가 쓴다. 이미 만든 층은 캐시를 쓰므로 build를 셋에 두어도 실제로는 한 번 만든다
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  image: kkugi-loadgen:latest
+  restart: unless-stopped
+  # 관측 서버의 디스크를 채우지 않게 컨테이너마다 로그를 최대 50MB로 묶는다
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+# 코드는 시각을 Asia/Seoul로 직접 다룬다. TZ는 로그에 찍히는 시각을 한국 시간으로 맞추려고 준다
+x-tz: &tz
+  TZ: Asia/Seoul
+
+# Worker의 자원 상한(가정). 관측 서버(vCPU 2개, 메모리 4GB)에서 Tempo·Loki·Grafana가 함께 돌므로
+# 발생기가 그 몫을 빼앗지 않게 한다. 실측(계획 단계 4)에서 docker stats로 보고 고친다
+x-worker-limits: &worker-limits
+  resources:
+    limits:
+      cpus: "1.0"
+      memory: 1g
+
+services:
+  master:
+    <<: *common
+    # 통계 CSV를 볼륨에 남긴다. Locust는 시작할 때 같은 이름의 CSV를 비우고 새로 쓰므로, 이름에 시작 시각을 붙여
+    # Master가 재시작(배포, 서버 재부팅, 비정상 종료 뒤 자동 재시작)해도 앞선 기록이 남게 한다.
+    # 파일은 kkugi-<YYYYmmdd-HHMMSS>_stats.csv처럼 생긴다(한국 시간). 기록 간격은 locustfile.py가 60초로 정한다
+    entrypoint:
+      - sh
+      - -c
+      - exec locust -f locustfile.py --csv="/app/stats/kkugi-$$(date +%Y%m%d-%H%M%S)" --csv-full-history "$$@"
+      - locust
+    command:
+      - --master
+      # 없으면 Master가 스스로 종료한다. Worker가 끊길 때 그 Worker의 User를 남은 Worker로 다시 나누기 위해서다
+      - --enable-rebalancing
+      # 컨테이너 안에서는 모든 주소로 열어야 포트 연결이 닿는다. 바깥에 여는 범위는 아래 ports가 127.0.0.1로 막는다
+      - --web-host=0.0.0.0
+      # 대상 주소는 Master가 정하고 Worker에 전한다
+      - --host=https://${APP_DOMAIN:?deploy/.env에 APP_DOMAIN(대상 도메인)을 적어야 한다}
+      # 웹 UI에서 시작 버튼을 누르지 않아도 Worker가 하나 붙으면 바로 User를 띄운다.
+      # 나중에 붙은 Worker에는 --enable-rebalancing이 User를 다시 나눠 준다
+      - --autostart
+      - --users=${KKUGI_USERS:?deploy/.env에 KKUGI_USERS(전체 User 수)를 적어야 한다}
+      - --spawn-rate=${KKUGI_SPAWN_RATE:?deploy/.env에 KKUGI_SPAWN_RATE(초당 User 생성 수)를 적어야 한다}
+    environment:
+      <<: *tz
+    ports:
+      - "127.0.0.1:8089:8089"
+      - "127.0.0.1:5557:5557"
+    volumes:
+      # 설정은 이미지에도 있지만, 호스트의 config/를 덮어 두면 파일을 고친 뒤 /kkugi/reload만으로 다시 읽을 수 있다
+      - ../config:/app/config:ro
+      - stats:/app/stats
+    # Master는 세션을 실행하지 않고 통계만 모은다. 상한(가정)은 Worker보다 낮게 둔다
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+
+  worker-private:
+    <<: *common
+    command: ["--worker", "--master-host=master"]
+    depends_on:
+      - master
+    environment:
+      <<: *tz
+      KKUGI_POOL: base
+      # 상태 DB(토큰 포함)는 Worker마다 따로 둔다. 두 Worker의 계정 범위가 겹치지 않으므로 옮길 일이 없다
+      KKUGI_STATE_DB: /app/state/base.db
+    # 대상 도메인을 앱 서버 프라이빗 IP로 해석하게 한다. 도메인 이름으로 연결하므로 인증서 검사는 그대로 통과한다
+    extra_hosts:
+      - "${APP_DOMAIN:?deploy/.env에 APP_DOMAIN(대상 도메인)을 적어야 한다}:${APP_PRIVATE_IP:?deploy/.env에 APP_PRIVATE_IP(앱 서버 프라이빗 IP)를 적어야 한다}"
+    volumes:
+      # 시작 설정을 Master와 같은 파일로 맞춘다(아래 worker-public도 같다).
+      # 이미지 안의 설정이 호스트보다 낡았을 때 계정 풀처럼 다시 읽을 수 없는 값이 Master와 어긋나지 않게 한다
+      - ../config:/app/config:ro
+      - state:/app/state
+    deploy: *worker-limits
+
+  worker-public:
+    <<: *common
+    command: ["--worker", "--master-host=master"]
+    depends_on:
+      - master
+    environment:
+      <<: *tz
+      KKUGI_POOL: public
+      # 공인 경로 Worker임을 표시한다. HTTP 요청 통계 이름에 경로 표시를 붙여 경로별 응답 시간을 나눠 본다
+      KKUGI_ROUTE: public
+      KKUGI_STATE_DB: /app/state/public.db
+    volumes:
+      - ../config:/app/config:ro
+      - state:/app/state
+    deploy: *worker-limits
+
+volumes:
+  # Worker별 상태 DB 파일(base.db, public.db). 지우면 토큰을 다시 받고 온보딩 여부를 서버에서 다시 확인한다
+  state:
+  # Master의 통계 CSV. 시작마다 kkugi-<시작 시각>_stats.csv, _stats_history.csv, _failures.csv, _exceptions.csv 네 개
+  stats:
