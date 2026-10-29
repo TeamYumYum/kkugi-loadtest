@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-from kkugi_load.accounts.identity import Account, activity_multiplier, seeded_rng
+from kkugi_load.accounts.identity import Account, activity_multiplier, seeded_uniforms
 from kkugi_load.config import Config
 
 
@@ -76,16 +76,22 @@ def open_times(config: Config, persona: str, index: int, day: date) -> list[date
     """계정이 그날 앱을 여는 시각을 시각순으로 돌려준다. 시각에는 config.tz(한국 시간)가 붙는다.
 
     h시 시간대마다 open_probability[h] × 페르소나 activity × 계정 활동 배수의 확률로 한 번 뽑고, 열면 그
-    시간 안의 무작위 분에 둔다. 그래서 한 시간대에 세션은 최대 하나다. 난수는 계정, 날짜, 시간대마다 따로
-    만들어 재시작해도 같은 시각이 나온다. 태그를 "activity"(계정 활동 배수)와 다르게 두어 둘이 상관되지 않게 한다.
+    시간 안의 무작위 분에 둔다. 그래서 한 시간대에 세션은 최대 하나다.
+
+    값은 (시드, "open", 계정, 날짜)의 해시 한 번으로 시간대마다 두 개씩(열기 판정, 분) 얻는다. 시간대마다 자리가
+    정해져 있으므로 한 시간대의 확률을 바꿔도 다른 시간대의 결과는 그대로이고, 판정과 분은 해시의 다른 구간이라
+    서로 상관되지 않는다. 태그를 "activity"(계정 활동 배수)와 다르게 두어 그것과도 상관되지 않게 한다.
+    random.Random을 시간대마다 만들면 자정에 Worker가 맡은 계정 전체의 일정을 만드는 동안 세션 실행이 10초 넘게
+    멈췄다.
     """
     scale = float(config.personas[persona]["activity"]) * activity_multiplier(config, index)
-    times = []
-    for hour, probability in enumerate(config.open_probability):
-        rng = seeded_rng(config.seed, "open", index, day.isoformat(), hour)
-        if rng.random() < probability * scale:
-            times.append(datetime.combine(day, time(hour, rng.randrange(60)), config.tz))
-    return times
+    table = config.open_probability
+    u = seeded_uniforms(config.seed, "open", index, day.isoformat(), count=2 * len(table))
+    return [
+        datetime.combine(day, time(hour, int(u[2 * hour + 1] * 60)), config.tz)
+        for hour, probability in enumerate(table)
+        if u[2 * hour] < probability * scale
+    ]
 
 
 class Persona(ABC):

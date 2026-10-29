@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from kkugi_load.accounts.identity import Account, seeded_rng
+from kkugi_load.accounts.identity import Account, seeded_rng, seeded_uniforms
 from kkugi_load.config import Config, hhmm
 from kkugi_load.personas.base import BodyProfile, Persona, PlannedSession, open_times, sample_body
 from kkugi_load.sessions.meal_log import MealInputs
@@ -56,22 +56,36 @@ class Dieter(Persona):
     def _plan_meal(self, config: Config, account: Account, day: date, meal_type: str, at: datetime) -> PlannedSession | None:
         """끼니 창의 첫 세션을 식사 기록으로 할지 정한다. 기록하지 않으면 None.
 
-        난수는 끼니마다 따로 만든다. 다른 시간대의 결과가 바뀌어도 이 끼니의 기록 여부와 입력값은 그대로다.
+        값은 끼니마다 해시로 따로 정한다. 다른 시간대의 결과가 바뀌어도 이 끼니의 기록 여부와 입력값은 그대로다.
+        계정 2만 개면 하루 4만 번 넘게 부르므로 random.Random을 만들지 않는다(open_times와 같은 이유).
         """
         settings = config.personas[self.name]
-        rng = seeded_rng(config.seed, "meal", account.index, day.isoformat(), meal_type)
-        if rng.random() >= float(settings["meals"][meal_type]["probability"]):
-            return None
         items = int(settings["items_per_meal"])
+        # 기록 여부 1개, 그 뒤로 음식마다 단어·양·검색 결과 고르기에 하나씩 쓴다
+        u = seeded_uniforms(config.seed, "meal", account.index, day.isoformat(), meal_type, count=1 + 3 * items)
+        if u[0] >= float(settings["meals"][meal_type]["probability"]):
+            return None
         pool = list(settings["breakfast_keywords"]) if meal_type == "BREAKFAST" else list(account.profile.preferred_keywords)
-        keywords = tuple(rng.sample(pool, items))
+        keywords = _sample(pool, u[1:1 + items])
+        grams_min, grams_max = int(settings["grams_min"]), int(settings["grams_max"])
         inputs = MealInputs(
             meal_type=meal_type,
             planned_at=at,
             keywords=keywords,
             # 검색 결과가 없을 때 이어서 검색할 단어
             fallback_keywords=tuple(k for k in pool if k not in keywords),
-            grams=tuple(rng.randint(int(settings["grams_min"]), int(settings["grams_max"])) for _ in keywords),
-            picks=tuple(rng.randrange(0, 1000) for _ in keywords),
+            grams=tuple(grams_min + int(x * (grams_max - grams_min + 1)) for x in u[1 + items:1 + 2 * items]),
+            picks=tuple(int(x * 1000) for x in u[1 + 2 * items:1 + 3 * items]),
         )
         return PlannedSession(account.index, f"dieter_{meal_type.lower()}", at, "meal_log", inputs)
+
+
+def _sample(pool: list[str], uniforms: tuple[float, ...]) -> tuple[str, ...]:
+    """pool에서 겹치지 않게 len(uniforms)개를 고른다. 앞에서부터 섞는 Fisher-Yates를 고를 만큼만 한다."""
+    if len(uniforms) > len(pool):
+        raise ValueError(f"단어 {len(pool)}개에서 {len(uniforms)}개를 고를 수 없다")
+    pool = list(pool)
+    for i, x in enumerate(uniforms):
+        j = i + int(x * (len(pool) - i))
+        pool[i], pool[j] = pool[j], pool[i]
+    return tuple(pool[:len(uniforms)])
