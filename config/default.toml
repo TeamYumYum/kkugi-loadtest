@@ -7,21 +7,23 @@ api_prefix = "/api/v1"
 
 [accounts]
 # 인공 계정 이메일은 {email_prefix}-{번호 5자리}@{email_domain}이다.
-# 확인 필요: 인공 사용자 전용 도메인은 팀에서 아직 정하지 않았다(synthetic-traffic.md 5장)
+# 서비스는 provider EMAIL_DEV이고 이메일이 lt-%@synthetic.kkugi.test인 회원을 인공 회원으로 센다(auth.md 5.5절).
+# 바꾸면 이미 만든 회원과 패턴이 어긋난다
 email_prefix = "lt"
 email_domain = "synthetic.kkugi.test"
 # 계정별 페르소나, 프로필, 하루 일정을 뽑는 난수 시드. 바꾸면 모든 계정의 값이 바뀐다
 seed = 20261028
 
 [auth]
-# 지금은 dev 로그인(POST /auth/login/dev)만 지원한다. 운영 환경에서는 이 경로가 404다
+# dev 로그인(POST /auth/login/dev)만 지원한다. 운영에서도 인공 트래픽용으로 켜져 있다(S15P31E101-342)
 method = "dev"
 # 액세스 토큰 만료까지 남은 시간이 이보다 짧으면 요청 전에 재발급한다(초)
 refresh_margin_seconds = 120
 
 [synthetic]
-# 인공 요청 구분 헤더. 이름이 정해지지 않아 비워 둔다(synthetic-traffic.md 5장)
-header_name = ""
+# 인공 요청 구분 헤더. 로그인을 포함한 모든 요청에 붙인다. backend는 이 헤더로 지표 태그 synthetic,
+# 로그 필드 synthetic, span 속성을 남긴다(S15P31E101-342). 비우면 헤더를 붙이지 않는다
+header_name = "X-Synthetic-Traffic"
 header_value = "1"
 
 # --- 계정 풀 ---

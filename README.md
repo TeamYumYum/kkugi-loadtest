@@ -4,7 +4,7 @@
 
 계정마다 페르소나와 개인 특성을 배정하고, 식사 기록·음식 검색·요약 조회 등의 행동을 수행하도록 설계합니다. 일상적인 사용 패턴을 재현하는 상시 시뮬레이션과, 사용량을 높여 병목을 확인하는 부하 테스트를 함께 지원하는 것이 목표입니다.
 
-> 현재는 다이어터 페르소나와 식사 기록 세션만 구현했고, dev 로그인을 켠 로컬 backend에서만 검증했습니다. 서버 배포 설정과 지표 연동은 아직 없습니다.
+> 현재는 다이어터 페르소나와 식사 기록 세션만 구현했고, dev 로그인을 켠 로컬 backend에서만 검증했습니다. 서버 배포 설정은 아직 없습니다.
 
 ## 목표
 
@@ -116,7 +116,9 @@ python -m venv .venv
 .venv/Scripts/python -m pytest
 ```
 
-대상 backend는 개발용 이메일 로그인(`AUTH_DEV_LOGIN_ENABLED=true`)이 켜져 있어야 합니다. 운영 환경에서는 이 로그인이 꺼져 있으므로, 인공 사용자 전용 로그인이 준비되기 전까지는 로컬이나 개발 환경에서만 실행할 수 있습니다. 로컬 backend는 서비스 저장소의 `infra/docker-compose.yml`로 띄웁니다.
+대상 backend는 개발용 이메일 로그인(`AUTH_DEV_LOGIN_ENABLED=true`)이 켜져 있어야 합니다. 운영에서도 인공 트래픽용으로 켜져 있습니다(S15P31E101-342). 로컬 backend는 서비스 저장소의 `infra/docker-compose.yml`로 띄웁니다.
+
+발생기는 모든 요청(로그인 포함)에 `X-Synthetic-Traffic: 1` 헤더를 붙입니다. backend는 이 헤더로 지표(`http.server.requests`의 `synthetic` 태그), 로그(`synthetic` 필드), 추적(span 속성)에서 인공 요청을 구분합니다. 인공 회원은 이메일이 `lt-<번호>@synthetic.kkugi.test`인 `EMAIL_DEV` 회원입니다.
 
 ### 구조
 
