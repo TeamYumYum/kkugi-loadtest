@@ -5,6 +5,7 @@
 - 트래픽 모양: [시간대별 표](decisions/2026-10-29-hourly-table.md), [트래픽 모양과 규모](decisions/2026-10-29-traffic-shape.md)
 - 규모와 서버: [시작 규모와 관측 서버 부담](decisions/2026-10-29-start-scale-and-load.md), [로컬 테스트](decisions/2026-10-29-local-tests.md)
 - 운영 연결: [backend 준비 완료와 재분배 채택](decisions/2026-10-29-backend-ready.md)
+- 관측 범위와 0-3 방식: [관측은 이미 있는 것으로 시작한다](decisions/2026-10-29-observation-scope.md)
 
 ## 진행 규칙
 
@@ -38,7 +39,8 @@
 ### 0-3. 탈퇴된 계정 다시 만들기
 - 고칠 곳: `kkugi_load/accounts/state.py`, `kkugi_load/accounts/identity.py`, `kkugi_load/client/api.py`, `kkugi_load/runner.py`
 - 내용
-  - 상태 DB에 `generation`(다시 만든 횟수)을 더하고, 기본 키를 이메일에서 계정 번호로 바꾼다
+  - 발생기는 탈퇴 API를 부르지 않는다. 바깥에서 인공 계정이 탈퇴되었을 때를 대비한 처리다
+  - 상태 DB(`state/accounts.db`, 계정별 토큰·회원 ID·온보딩 여부)에 `generation`(다시 만든 횟수)을 더하고, 기본 키를 이메일에서 계정 번호로 바꾼다
   - 이메일 번호 = `generation × 1,000,000 + 계정 번호`. 예: 계정 42를 처음 다시 만들면 `lt-1000042@synthetic.kkugi.test`. 페르소나와 프로필은 계정 번호로 정하므로 바뀌지 않고, 식사 UUID는 이메일로 정하므로 새 회원의 것과 겹치지 않는다
   - 어느 요청에서든 401 `MEMBER_WITHDRAWN`을 받으면 `generation`을 올리고 토큰·회원 ID·온보딩 여부를 지운 뒤 저장한다. 그 세션은 `ACCOUNT withdrawn`으로 기록하고 끝낸다. 다음 세션이 새 이메일로 가입한다
   - 운영 상태 DB가 아직 없으므로 마이그레이션은 만들지 않는다. 옛 형식의 DB를 만나면 지우라는 메시지와 함께 시작하지 않는다
@@ -92,17 +94,14 @@
 - 테스트: 배율에 따른 선택이 결정적인지, 다시 만든 일정이 지난 세션을 다시 넣지 않는지, 승인 응답에 현재 값이 실리는지
 - 실제 확인: 로컬 Master·Worker 두 개로 배율을 바꿔 두 Worker가 모두 따르는지
 
-### 2-2. Master `/metrics`
-- 고칠 곳: 새 모듈(예: `kkugi_load/metrics.py`), `locustfile.py`, `requirements.txt`(`prometheus_client`)
-- 내용
-  - Worker가 통계 보고에 지표 증가분을 실어 보내고(Locust의 Worker 보고 이벤트), Master가 합쳐 노출한다. 노트북 Worker의 값도 Master에 모인다
-  - 지표: API별 응답 시간 히스토그램, 세션 결과(성공·실패·건너뜀·탈퇴)별 수, 놓친 세션 수, 시작 지연 히스토그램, 현재 배율, Worker별 계정 수와 User 수
-  - 라벨에 계정 번호나 이메일을 넣지 않는다
-- 테스트: 증가분 합치기, 라벨 값이 정해진 집합 안에 있는지
+### 2-2. 통계 기록 남기기
+- 고칠 곳: README 실행 명령, 3-2의 compose
+- 내용: Master를 `--csv <경로> --csv-full-history`로 띄워 통계를 일정 간격으로 파일에 쌓는다. 실측 기간의 클라이언트 응답 시간과 세션 결과는 이 파일로 본다. 요청 양·응답 시간·오류는 backend 지표의 `synthetic` 태그로 Grafana에서 본다
+- Prometheus `/metrics`는 보류한다. 실측에서 CSV로 부족하다고 판단되면 그때 만든다
 
 ### 2-3. 거버너
 - 고칠 곳: `kkugi_load/governor.py`(새 파일), `kkugi_load/distributed.py`
-- 내용: Master가 1분마다 최근 5분의 HTTP 실패율과 p99를 본다. 기준을 넘으면 배율을 절반으로 낮추고, 10분 동안 정상이면 0.1씩 올린다. 사람이 정한 배율이 상한이다. 바뀔 때마다 로그와 지표를 남긴다
+- 내용: Master가 1분마다 Master 안의 Locust 통계에서 최근 5분의 HTTP 실패율과 p99를 본다. 기준을 넘으면 배율을 절반으로 낮추고, 10분 동안 정상이면 0.1씩 올린다. 사람이 정한 배율이 상한이다. 바뀔 때마다 로그와 지표를 남긴다
 - 기준값(가정, 설정): 실패율 2%, p99 3초
 - 테스트: 가짜 지표 입력에 대한 배율 변화
 
@@ -123,12 +122,16 @@
 - README에 시작·정지, 배율·다시 읽기, 노트북 붙이기, 되돌리기, Lightsail 크레딧 조회를 적는다
 
 ### 저장소 밖에 필요한 것
-- 관측 서버 Prometheus가 발생기 `/metrics`를 수집하는 설정(서비스 저장소 `infra/observability/prometheus/prometheus.yml`)
-- 있으면 좋은 것: 서버 CPU·메모리 수집, 인공 요청 추적·로그 샘플링. 없어도 계정 1,000개 실측은 Lightsail 지표(AWS CLI)와 `docker stats`로 시작할 수 있다
+- 없다. 서버 CPU와 크레딧은 Lightsail 콘솔이나 AWS CLI로, 컨테이너별 사용량은 `docker stats`로 본다. 인공 요청 추적·로그 샘플링은 실측에서 수집이 버티지 못할 때만 서비스 저장소에 맡긴다
 
 ## 단계 4. 실측과 증량
 
-- [ ] 계정 1,000개로 하루 이상 돌린다. 잴 것: Lightsail CPU·크레딧(두 서버), 발생기 컨테이너 CPU, Tempo·Loki 하루 증가량, API별 p95·p99, 놓친 세션 수
+- [ ] 계정 1,000개로 하루 이상 돌린다. 잴 것과 보는 곳
+  - Lightsail CPU·크레딧(두 서버): Lightsail 콘솔이나 AWS CLI
+  - 발생기·Tempo·Loki 컨테이너 CPU: 관측 서버의 `docker stats`
+  - Tempo·Loki 하루 증가량: 관측 서버의 볼륨 크기
+  - API별 p95·p99, 오류: Grafana의 backend 지표(`synthetic` 태그)
+  - 클라이언트 응답 시간, 세션 결과, 놓친 세션: Locust CSV 통계 기록
 - [ ] 실측값으로 10,000개를 계산해 버틸 수 있으면 올린다
 - [ ] 같은 방식으로 20,000개를 판단한다. 10,000개를 넘기기 전에 `peak-*` 풀 번호를 `base`와 겹치지 않게 옮긴다(지금 `peak-1`은 10,000번부터다)
 
