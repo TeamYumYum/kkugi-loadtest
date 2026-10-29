@@ -53,3 +53,4 @@
 | 2026-10-29 | [backend 준비 완료와 재분배 채택](decisions/2026-10-29-backend-ready.md) | 결정 |
 | 2026-10-29 | [관측은 이미 있는 것으로 시작한다](decisions/2026-10-29-observation-scope.md) | 결정 |
 | 2026-10-29 | [실측은 다이어터만으로, 시간대 표는 공통 하나에 배수](decisions/2026-10-29-persona-scope.md) | 결정 |
+| 2026-10-29 | [요청 경로 분할은 공인 경로 전용 Worker로 한다](decisions/2026-10-29-route-split.md) | 결정 |
