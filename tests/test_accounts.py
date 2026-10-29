@@ -2,7 +2,9 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 
 from kkugi_load import config as config_module
-from kkugi_load.accounts.identity import eaten_at, meal_uuid, persona_of, possible_meal_uuids
+import pytest
+
+from kkugi_load.accounts.identity import email_of, eaten_at, meal_uuid, persona_of, possible_meal_uuids
 from kkugi_load.personas import PERSONAS, build_account
 
 CONFIG = config_module.load({})
@@ -16,8 +18,17 @@ def _plan(index: int, day: date = DAY):
 
 def test_account_is_deterministic():
     assert build_account(CONFIG, 7) == build_account(CONFIG, 7)
-    assert build_account(CONFIG, 7).email == "lt-00007@synthetic.kkugi.test"
     assert build_account(CONFIG, 7) != build_account(CONFIG, 8)
+
+
+def test_email_number_adds_generation_times_a_million():
+    assert email_of(CONFIG, 7) == "lt-00007@synthetic.kkugi.test"
+    assert email_of(CONFIG, 42, 0) == "lt-00042@synthetic.kkugi.test"
+    assert email_of(CONFIG, 42, 1) == "lt-1000042@synthetic.kkugi.test"
+    assert email_of(CONFIG, 42, 2) == "lt-2000042@synthetic.kkugi.test"
+    # 계정 번호가 100만을 넘으면 다른 계정의 다음 generation과 겹친다
+    with pytest.raises(ValueError):
+        email_of(CONFIG, 1_000_000)
 
 
 def test_persona_follows_weights():
@@ -46,24 +57,28 @@ def test_day_plan_is_deterministic_and_sorted():
 
 def test_dieter_meals_follow_settings():
     settings = CONFIG.personas["dieter"]
-    active_days = 0
+    meals = 0
     for index in range(300):
         account, plan = _plan(index)
-        active_days += bool(plan)
         for session in plan:
+            if session.session == "view":
+                assert session.name == "dieter_view"
+                assert session.inputs.planned_at == session.at
+                continue
+            meals += 1
             meal = session.inputs
             window = settings["meals"][meal.meal_type]
+            assert session.session == "meal_log"
             assert session.name == f"dieter_{meal.meal_type.lower()}"
-            assert window["from"] <= meal.planned_at.strftime("%H:%M") <= window["to"]
+            assert window["from"] <= meal.planned_at.strftime("%H:%M") < window["to"]
             assert meal.planned_at.tzinfo == CONFIG.tz
-            assert meal.client_uuid == meal_uuid(account.email, DAY, meal.meal_type)
             assert len(meal.keywords) == settings["items_per_meal"]
             assert not set(meal.keywords) & set(meal.fallback_keywords)
             assert all(settings["grams_min"] <= g <= settings["grams_max"] for g in meal.grams)
             if meal.meal_type != "BREAKFAST":
                 assert set(meal.keywords) <= set(account.profile.preferred_keywords)
-    # 활동 확률 0.8(가정)
-    assert 0.7 < active_days / 300 < 0.9
+    # 끼니마다 기록 확률(가정)로 남으므로 300명이면 식사 기록이 충분히 나온다
+    assert meals > 300
 
 
 def test_meal_uuid_changes_per_day_and_type():

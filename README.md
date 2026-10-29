@@ -4,7 +4,7 @@
 
 계정마다 페르소나와 개인 특성을 배정하고, 식사 기록·음식 검색·요약 조회 등의 행동을 수행하도록 설계합니다. 일상적인 사용 패턴을 재현하는 상시 시뮬레이션과, 사용량을 높여 병목을 확인하는 부하 테스트를 함께 지원하는 것이 목표입니다.
 
-> 현재는 다이어터 페르소나와 식사 기록 세션만 구현했고, dev 로그인을 켠 로컬 backend에서만 검증했습니다. 서버 배포 설정과 지표 연동은 아직 없습니다.
+> 현재는 다이어터 페르소나와 식사 기록·조회 세션을 구현했고, 일정은 시간대별 확률표로 만듭니다. dev 로그인을 켠 로컬 backend에서만 검증했고, 서버 배포 설정은 아직 없습니다. 남은 작업과 결정 기록은 `notes/`에 있습니다.
 
 ## 목표
 
@@ -29,7 +29,7 @@
 
 전체 계정 수와 Locust에서 실행 중인 User 수, 동시 활동 사용자 수는 구분합니다. 대기 중인 User가 존재할 수 있으며, 업무 세션은 로그인 세션이나 TCP 연결과도 다릅니다.
 
-상시 시뮬레이션의 RPS는 페르소나 구성, 활동 빈도, 시간대, 세션별 요청 수와 응답 시간에 따라 달라집니다. 개별 요청의 시작 시각을 고정하기보다 사용자 행동을 모델링합니다. 구체적인 활동 비율과 빈도는 서비스의 페르소나 정의를 확인해 결정합니다.
+상시 시뮬레이션의 RPS는 계정 수, 시간대별 확률표, 페르소나와 계정의 활동 배수, 세션별 요청 수에 따라 달라집니다. 개별 요청의 시작 시각을 고정하기보다 사용자 행동을 모델링합니다. 시간대별 세션 수의 기대값은 `계정 수 × 그 시간대의 확률`입니다(실행 모델 참고).
 
 ### 계정별 정보
 
@@ -59,7 +59,7 @@ Master는 실행을 제어하고 통계를 집계합니다. 실제 가상 사용
 
 ## 첫 번째 시나리오: 다이어터의 점심 기록
 
-아침 식사를 이미 기록한 사용자가 음식 두 개를 검색해 점심을 저장하고, 변경된 요약을 확인하는 흐름입니다.
+아침 식사를 이미 기록한 사용자가 음식 두 개를 검색해 점심을 저장하고, 변경된 요약을 확인하는 흐름입니다. 식사를 기록하지 않을 때는 1~3번만 실행하는 조회 세션(`view`)을 실행합니다. 조회 세션은 요약이 요청한 날짜의 것인지 확인합니다.
 
 | 순서 | API | 목적 |
 | --- | --- | --- |
@@ -88,7 +88,7 @@ Master는 실행을 제어하고 통계를 집계합니다. 실제 가상 사용
 - 앱 서버·DB·발생기의 CPU, 메모리, DB 연결과 쿼리 지연
 - 네트워크 송수신량과 장시간 실행 중 자원 사용 추이
 
-Worker가 Master로 보고한 요청 통계를 서버 내부의 Prometheus·Grafana와 연결하는 방안을 검토합니다. 구체적인 수집 연동은 아직 구현하지 않았습니다.
+인공 요청의 양·응답 시간·오류는 backend 지표의 `synthetic` 태그로 Grafana에서 봅니다. 클라이언트 응답 시간과 세션 결과는 Locust 통계(웹 UI, CSV 기록)로 봅니다. 서버 CPU와 크레딧은 Lightsail 콘솔이나 AWS CLI로 봅니다. 발생기 통계를 Prometheus로 보내는 연동은 보류했습니다.
 
 처음에는 소수 계정으로 기능과 상태 격리를 검증하고, `n=1,000` 규모로 하루 또는 이틀 실행합니다. 안정성과 실제 활동량을 확인한 뒤 계정 수를 늘립니다. 응답 시간과 오류율의 합격 기준은 초기 측정과 서비스 요구에 맞춰 명시합니다.
 
@@ -96,13 +96,7 @@ Worker가 Master로 보고한 요청 통계를 서버 내부의 Prometheus·Graf
 
 ## 구현 순서
 
-1. 서비스의 페르소나 정의, API 명세, 인공 계정 인증 방식을 확인합니다.
-2. 계정 한 명의 점심 기록 세션을 구현하고 업무 결과를 검증합니다.
-3. 소수 계정으로 상태 격리, 중복 방지, 재시도와 통계를 확인합니다.
-4. 페르소나별 프로필과 일일 활동 스케줄을 추가합니다.
-5. Master·Worker 실행 구성과 계정 배정 정책을 구현합니다.
-6. 지표 수집을 연결하고 상시 시뮬레이션을 시작합니다.
-7. 추가 Worker를 활용한 점진적 부하 실험을 진행합니다.
+구현 계획은 `notes/plan.md`, 설계 결정은 `notes/decisions/`에 있습니다.
 
 ## 실행 안내
 
@@ -116,7 +110,11 @@ python -m venv .venv
 .venv/Scripts/python -m pytest
 ```
 
-대상 backend는 개발용 이메일 로그인(`AUTH_DEV_LOGIN_ENABLED=true`)이 켜져 있어야 합니다. 운영 환경에서는 이 로그인이 꺼져 있으므로, 인공 사용자 전용 로그인이 준비되기 전까지는 로컬이나 개발 환경에서만 실행할 수 있습니다. 로컬 backend는 서비스 저장소의 `infra/docker-compose.yml`로 띄웁니다.
+대상 backend는 개발용 이메일 로그인(`AUTH_DEV_LOGIN_ENABLED=true`)이 켜져 있어야 합니다. 운영에서도 인공 트래픽용으로 켜져 있습니다(S15P31E101-342). 로컬 backend는 서비스 저장소의 `infra/docker-compose.yml`로 띄웁니다.
+
+발생기는 모든 요청(로그인 포함)에 `X-Synthetic-Traffic: 1` 헤더를 붙입니다. backend는 이 헤더로 지표(`http.server.requests`의 `synthetic` 태그), 로그(`synthetic` 필드), 추적(span 속성)에서 인공 요청을 구분합니다. 인공 회원은 이메일이 `lt-<번호>@synthetic.kkugi.test`인 `EMAIL_DEV` 회원입니다.
+
+`<번호>`는 `generation × 1,000,000 + 계정 번호`입니다. generation은 계정이 바깥에서 탈퇴되어 다시 만든 횟수이고 처음은 0입니다. 예를 들어 계정 42는 `lt-00042@...`이고, 탈퇴된 뒤에는 `lt-1000042@...`로 새 회원이 됩니다. 페르소나와 프로필은 계정 번호로 정하므로 바뀌지 않습니다. 발생기는 탈퇴 API를 부르지 않습니다.
 
 ### 구조
 
@@ -125,10 +123,11 @@ python -m venv .venv
 | `kkugi_load/personas/` | 페르소나. 계정의 프로필과 하루 세션 일정을 정합니다. 페르소나마다 파일 하나입니다 |
 | `kkugi_load/sessions/` | 세션. 요청 흐름과 결과 검증입니다. 여러 페르소나가 함께 씁니다 |
 | `kkugi_load/scheduler.py` | 한 프로세스가 맡은 계정들의 세션을 시각순으로 내줍니다 |
-| `kkugi_load/accounts/` | 계정 번호에서 이메일·페르소나·식사 UUID를 정하고, 토큰 등 상태를 SQLite에 저장합니다 |
+| `kkugi_load/accounts/` | 계정 번호에서 페르소나를, 계정 번호와 generation에서 이메일과 식사 UUID를 정하고, 토큰 등 상태를 SQLite에 저장합니다 |
 | `kkugi_load/client/api.py` | backend 호출, 응답 해석, 토큰 재발급 |
 | `kkugi_load/distributed.py` | Master가 Worker들의 계정 범위가 겹치지 않는지 확인합니다 |
-| `config/default.toml` | 계정 풀, 페르소나 비율과 행동, 생각 시간 등 설정. "가정"으로 표시한 값은 확정 사양이 아닙니다 |
+| `kkugi_load/capacity.py` | 하루 일정에서 필요한 실행기(User) 수를 추정합니다 |
+| `config/default.toml` | 시간대별 확률표, 활동 배수, 계정 풀, 페르소나 행동, 생각 시간 등 설정. "가정"으로 표시한 값은 확정 사양이 아닙니다 |
 
 새 페르소나는 `personas/`에 파일을 만들고 `personas/__init__.py`에 등록한 뒤, 설정에 `[personas.<이름>]`을 더합니다. 새 세션 종류는 `sessions/`에 만들고 `runner.py`의 `SESSIONS`에 등록합니다.
 
@@ -138,6 +137,20 @@ Locust User는 계정이 아니라 **실행기**입니다. 각 프로세스는 �
 
 - `realtime`(기본): 계획 시각에 실행합니다. 발생기를 켜기 전에 지난 세션은 버리고, 계획보다 30분(설정값) 넘게 늦으면 놓친 세션으로 셉니다.
 - `immediate`: 오늘의 세션을 시각과 관계없이 바로 실행하고, 단독 실행에서는 모두 끝나면 종료합니다. 로컬 검증용입니다.
+
+**하루 일정.** 계정마다 0~23시(한국 시간) 각 시간대에 `open_probability[h] × 페르소나 activity × 계정 활동 배수`의 확률로 한 번 앱을 열지 정하고, 열면 그 시간 안의 무작위 분에 세션 하나를 둡니다. 한 시간대에 한 계정의 세션은 최대 하나이고, 같은 계정·날짜면 재시작해도 같은 일정입니다. 값은 계정·날짜마다 해시 한 번으로 얻으므로, 한 Worker가 계정 20,000개를 맡아도 하루 일정을 약 1초 안에 만듭니다.
+
+| 설정 | 뜻 |
+| --- | --- |
+| `[traffic].open_probability` | 시간대마다 계정 하나가 앱을 열 확률, 24개. 계정 수 × 확률이 그 시간의 세션 수 기대값입니다 |
+| `[traffic].activity_multipliers` | 계정 활동 배수 `[배수, 비중]` 목록. 계정마다 시드와 계정 번호로 하나를 고정합니다. 비중 가중 평균은 1이어야 합니다 |
+| `[personas.<이름>].activity` | 페르소나 활동 배수(필수). 다이어터 1.0 |
+
+칸 수, 확률 범위, 평균 배수, 곱한 확률의 최댓값이 1 이하인지는 설정을 읽을 때 검사하고, 어긋나면 시작하지 않습니다.
+
+다이어터는 끼니 창(아침 06~09시, 점심 11~14시, 저녁 17~20시) 안에서 그날 처음 연 세션을 그 끼니의 `probability`로 식사 기록 세션으로 만들고, 나머지는 모두 조회 세션으로 만듭니다. 끼니마다 식사 기록은 하루 최대 한 번입니다.
+
+**실행기 수.** 각 Worker(또는 단독 실행)는 일정을 만들 때 필요한 실행기 수를 추정해 일정 로그에 남깁니다. 시간대별 `Σ(세션 수 × 평균 길이) ÷ 3600`의 최댓값에 여유 2배를 곱해 올림합니다. 평균 길이는 추정값으로, 식사 기록은 `음식 수 × (검색 + 선택 생각 시간 평균) + 1초`(기본 설정 약 14초), 조회는 1초입니다. User 생성이 끝났을 때와 날짜가 바뀌어 새 일정을 만들었을 때 그 프로세스의 User 수가 이보다 적으면 경고합니다. 지금 설정에서는 계정 1,000개에 약 3개, 20,000개에 약 56개입니다.
 
 한 계정의 세션은 동시에 둘 이상 실행하지 않습니다. 식사 UUID는 계정·날짜·끼니로 정해지므로, 이미 기록한 끼니는 저장하지 않고 `(skipped)`로 끝납니다.
 
@@ -151,15 +164,17 @@ KKUGI_SCHEDULE=immediate KKUGI_ACCOUNT_START=0 KKUGI_ACCOUNT_COUNT=10   .venv/Sc
 
 ```bash
 # 서버: Master와 상시 Worker
-locust -f locustfile.py --master --host https://<대상>
+locust -f locustfile.py --master --enable-rebalancing --web-host 127.0.0.1   --csv state/stats/kkugi --csv-full-history --host https://<대상>
 KKUGI_POOL=base locust -f locustfile.py --worker --master-host 127.0.0.1
 
 # 팀원 노트북: 풀마다 하나씩, 다른 노트북과 겹치지 않게
 KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 ```
 
-- Master의 User 수는 모든 Worker에 고르게 나뉩니다. 노트북 Worker를 붙일 때는 Master의 User 수도 함께 늘립니다. Worker가 새로 붙어도 Locust는 기본적으로 User를 다시 나누지 않습니다.
+- Master의 User 수는 연결된 Worker들에 고르게 나뉩니다. 노트북 Worker를 붙일 때는 Worker마다 충분한 User가 가도록 Master의 User 수도 함께 늘립니다.
+- Worker가 새로 붙으면 Locust가 User를 다시 나눕니다. 하지만 Worker가 응답 없이 끊기면, 기본 설정에서는 그 Worker의 User가 남은 Worker로 돌아가지 않아 전체 User 수가 줄어듭니다. Master를 `--enable-rebalancing`으로 띄우면 끊길 때도 다시 나눕니다(Locust 2.47.0, 로컬에서 확인). 이 옵션 없이 띄운 Master는 이유를 로그에 남기고 종료 코드 1로 끝납니다.
 - Worker는 Master가 계정 범위를 승인하기 전에는 세션을 실행하지 않습니다. 겹친다고 거부된 Worker는 종료 코드 1로 끝납니다.
+- 통계는 Master에 모입니다. `--csv`와 `--csv-full-history`를 주면 `kkugi_stats.csv`(누적), `kkugi_stats_history.csv`(API별 기록), `kkugi_failures.csv`, `kkugi_exceptions.csv`를 남깁니다. 기록 간격은 60초입니다(Locust 기본값 1초를 `locustfile.py`에서 바꿨습니다). 실측 기간의 클라이언트 응답 시간, 세션 결과, 놓친 세션은 이 파일로 보고, 서버 쪽 요청 양·응답 시간·오류는 backend 지표의 `synthetic` 태그로 봅니다.
 - Master·Worker 연결 포트는 TCP 5557입니다. Windows에서는 `--processes`를 쓸 수 없으므로 Worker마다 프로세스를 따로 띄웁니다.
 
 | 환경 변수 | 기본값 | 의미 |
@@ -167,8 +182,31 @@ KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 | `KKUGI_POOL` | `base` | 이 Worker가 맡을 계정 풀 이름(`config/default.toml`의 `[pools.*]`) |
 | `KKUGI_ACCOUNT_START`, `KKUGI_ACCOUNT_COUNT` | 풀의 값 | 풀의 범위를 덮어씁니다. 로컬 검증용입니다 |
 | `KKUGI_SCHEDULE` | `realtime` | `realtime` 또는 `immediate` |
-| `KKUGI_STATE_DB` | `state/accounts.db` | 계정 상태(토큰 포함) SQLite 파일. 저장소에 올리지 않습니다 |
+| `KKUGI_STATE_DB` | `state/accounts.db` | 계정 상태(generation, 토큰, 회원 ID, 온보딩 여부) SQLite 파일. 계정 번호가 키입니다. 옛 형식 파일이면 시작하지 않으니 지우고 다시 시작합니다. 저장소에 올리지 않습니다 |
 | `KKUGI_CONFIG` | `config/default.toml` | 설정 파일 |
+
+### 운영 중 조절
+
+Master(단독 실행이면 그 프로세스)의 웹 UI에 조절 경로가 있습니다. 운영에서는 웹 UI를 `--web-host 127.0.0.1`로 띄우고 SSH 터널로만 접근합니다. 잘못된 값은 400과 이유(`{"error": ...}`)를 돌려줍니다.
+
+```bash
+curl http://localhost:8089/kkugi/control                  # 현재 배율, 설정 버전, Worker별 적용 상태
+curl -X POST -d scale=0.5 http://localhost:8089/kkugi/scale  # 배율 바꾸기(0~1)
+curl -X POST http://localhost:8089/kkugi/stop             # 정지(배율 0)
+curl -X POST http://localhost:8089/kkugi/reload           # 설정 파일 다시 읽기
+```
+
+- **배율.** 계획된 세션을 이 확률로만 실행합니다. 세션마다 계정·날짜·시간대로 정해지는 값과 비교하므로, 배율을 바꿔도 같은 세션이 일관되게 남거나 빠지고 낮은 배율에서 남는 세션은 높은 배율에서도 남습니다. 걸러진 세션은 `SCHEDULE scaled_out`으로 세며 실패가 아닙니다. 배율을 다시 올리면 아직 시각이 되지 않은 세션만 실행됩니다. 시작 배율은 `[control] scale`이고, 설정을 다시 읽어도 배율은 바뀌지 않습니다.
+- **설정 다시 읽기.** Master가 자기 설정 파일을 다시 읽어 검증한 뒤 원문을 모든 Worker에 보냅니다. Worker 쪽 설정 파일은 쓰지 않으므로 노트북마다 설정이 달라지지 않습니다.
+  - `timezone`, `api_prefix`, `[accounts]`, `[auth]`, `[synthetic]`, `[pools]`가 시작할 때와 다르면 Master가 거부합니다. 바뀌면 계정의 이메일이나 범위가 달라지기 때문입니다. Worker도 자기 시작 설정과 다르면 적용하지 않고 오류를 남깁니다.
+  - Worker는 오늘 일정을 다시 만들되, 지난 세션과 이미 실행한 세션은 넣지 않고 실행 중인 세션은 그대로 둡니다.
+  - 계정의 페르소나는 시작할 때 정한 것을 유지합니다. 쓰이고 있는 페르소나를 설정에서 빼면 Worker가 적용에 실패하고 지금 일정을 유지합니다.
+- **거버너.** Master(단독 실행이면 그 프로세스)가 `[governor] interval_seconds`(기본 60초)마다 최근 `window_seconds`(기본 300초)의 HTTP 요청 실패율과 p99를 봅니다. 실패율이 `max_failure_ratio`(기본 2%, 가정)를 넘거나 p99가 `max_p99_ms`(기본 3,000ms, 가정)를 넘으면 실제 배율을 절반으로 낮춥니다. `recovery_seconds`(기본 600초) 동안 정상이 이어지면 `recovery_step`(기본 0.1)씩 올리고, 상한은 사람이 `/kkugi/scale`로 정한 배율입니다.
+  - 세션·일정·계정 통계(`SESSION`, `SCHEDULE`, `ACCOUNT`)는 보지 않습니다. 놓친 세션은 서버 문제가 아니고, 세션 시간에는 생각 시간이 들어 있기 때문입니다.
+  - 창 안의 요청이 `min_requests`(기본 200건)보다 적거나, 배율을 바꾼 뒤 새 창이 아직 차지 않았거나, 통계를 초기화한 직후에는 판단하지 않습니다. 그래서 같은 나쁜 창으로 연달아 낮추지 않고, 요청이 적은 밤에 한두 건의 실패로 낮추지 않습니다.
+  - 사람이 배율을 정하면 거버너는 그 값에서 다시 시작합니다. 상태와 마지막으로 바꾼 이유는 `GET /kkugi/control`의 `governor`에서 보고, 배율을 바꿀 때마다 이유를 로그에 남깁니다.
+  - `[governor]`는 `/kkugi/reload`로 바꿀 수 있습니다. `enabled = false`로 끄면 사람이 정한 배율로 되돌립니다.
+- 나중에 붙은 Worker는 계정 범위를 승인받을 때 현재 배율과 다시 읽은 설정을 함께 받고, 그것을 적용한 뒤에 세션을 실행합니다.
 
 ### 통계 읽는 법
 
@@ -176,10 +214,13 @@ KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 | --- | --- |
 | `GET /...`, `POST /...` | 세션 안의 요청. 경로는 식별자 없이 템플릿으로 남깁니다 |
 | `[auth] ...`, `[setup] ...` | 토큰 발급과 계정 준비(온보딩). 세션 요청과 나눠 봅니다 |
-| `SESSION <페르소나>_<끼니>` | 세션 하나의 성공·실패와 걸린 시간(생각 시간 포함). 업무 결과 검증 실패도 여기서 실패로 셉니다 |
+| `SESSION dieter_breakfast`, `dieter_lunch`, `dieter_dinner` | 식사 기록 세션 하나의 성공·실패와 걸린 시간(생각 시간 포함). 업무 결과 검증 실패도 여기서 실패로 셉니다 |
+| `SESSION dieter_view` | 조회 세션(요약·목표·성장) 하나의 성공·실패와 걸린 시간 |
 | `SESSION ... (skipped)` | 이미 기록한 끼니라 저장하지 않은 세션 |
 | `SCHEDULE start_delay` | 계획 시각보다 늦게 시작한 정도. 실행기가 모자라면 늘어납니다 |
 | `SCHEDULE missed` | 너무 늦어 실행하지 않은 세션(실패로 셉니다) |
+| `SCHEDULE scaled_out` | 배율로 걸러 실행하지 않은 세션(실패가 아닙니다) |
+| `ACCOUNT withdrawn` | 계정이 바깥에서 탈퇴되어(401 `MEMBER_WITHDRAWN`) 세션을 끝낸 경우. 서버는 정상 동작했으므로 실패로 세지 않습니다. 다음 세션이 새 이메일로 가입하고 온보딩합니다 |
 
 식사 세션은 저장한 식사의 UUID·끼니·음식·양·날짜, 다른 데이터가 섞이지 않았는지, 요약의 섭취 칼로리가 저장한 식사만큼 늘었는지를 확인합니다.
 
