@@ -32,7 +32,7 @@ import os
 import random
 from datetime import datetime
 
-from locust import HttpUser, constant, events, task
+from locust import HttpUser, constant, events, stats, task
 from locust.runners import LocalRunner, MasterRunner, WorkerRunner
 
 from kkugi_load import config as config_module
@@ -48,6 +48,10 @@ from kkugi_load.runner import report_missed, report_scaled_out, report_start_del
 from kkugi_load.scheduler import Due, Scheduler
 
 log = logging.getLogger("kkugi")
+
+# --csv-full-history로 남기는 통계 기록의 간격(초). Locust 기본값은 1초라, 며칠씩 돌리면 API마다 하루 86,400줄이
+# 쌓인다. 실측은 분 단위로 보면 충분하다
+stats.CSV_STATS_INTERVAL_SEC = 60
 
 ENV = dict(os.environ)
 # 시작할 때 읽은 설정 원문. 다시 읽은 설정의 바꿀 수 없는 값을 이것과 비교한다

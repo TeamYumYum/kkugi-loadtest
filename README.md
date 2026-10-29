@@ -164,7 +164,7 @@ KKUGI_SCHEDULE=immediate KKUGI_ACCOUNT_START=0 KKUGI_ACCOUNT_COUNT=10   .venv/Sc
 
 ```bash
 # 서버: Master와 상시 Worker
-locust -f locustfile.py --master --enable-rebalancing --host https://<대상>
+locust -f locustfile.py --master --enable-rebalancing --web-host 127.0.0.1   --csv state/stats/kkugi --csv-full-history --host https://<대상>
 KKUGI_POOL=base locust -f locustfile.py --worker --master-host 127.0.0.1
 
 # 팀원 노트북: 풀마다 하나씩, 다른 노트북과 겹치지 않게
@@ -174,6 +174,7 @@ KKUGI_POOL=peak-1 locust -f locustfile.py --worker --master-host <Master 주소>
 - Master의 User 수는 연결된 Worker들에 고르게 나뉩니다. 노트북 Worker를 붙일 때는 Worker마다 충분한 User가 가도록 Master의 User 수도 함께 늘립니다.
 - Worker가 새로 붙으면 Locust가 User를 다시 나눕니다. 하지만 Worker가 응답 없이 끊기면, 기본 설정에서는 그 Worker의 User가 남은 Worker로 돌아가지 않아 전체 User 수가 줄어듭니다. Master를 `--enable-rebalancing`으로 띄우면 끊길 때도 다시 나눕니다(Locust 2.47.0, 로컬에서 확인). 이 옵션 없이 띄운 Master는 이유를 로그에 남기고 종료 코드 1로 끝납니다.
 - Worker는 Master가 계정 범위를 승인하기 전에는 세션을 실행하지 않습니다. 겹친다고 거부된 Worker는 종료 코드 1로 끝납니다.
+- 통계는 Master에 모입니다. `--csv`와 `--csv-full-history`를 주면 `kkugi_stats.csv`(누적), `kkugi_stats_history.csv`(API별 기록), `kkugi_failures.csv`, `kkugi_exceptions.csv`를 남깁니다. 기록 간격은 60초입니다(Locust 기본값 1초를 `locustfile.py`에서 바꿨습니다). 실측 기간의 클라이언트 응답 시간, 세션 결과, 놓친 세션은 이 파일로 보고, 서버 쪽 요청 양·응답 시간·오류는 backend 지표의 `synthetic` 태그로 봅니다.
 - Master·Worker 연결 포트는 TCP 5557입니다. Windows에서는 `--processes`를 쓸 수 없으므로 Worker마다 프로세스를 따로 띄웁니다.
 
 | 환경 변수 | 기본값 | 의미 |
@@ -200,6 +201,11 @@ curl -X POST http://localhost:8089/kkugi/reload           # 설정 파일 다시
   - `timezone`, `api_prefix`, `[accounts]`, `[auth]`, `[synthetic]`, `[pools]`가 시작할 때와 다르면 Master가 거부합니다. 바뀌면 계정의 이메일이나 범위가 달라지기 때문입니다. Worker도 자기 시작 설정과 다르면 적용하지 않고 오류를 남깁니다.
   - Worker는 오늘 일정을 다시 만들되, 지난 세션과 이미 실행한 세션은 넣지 않고 실행 중인 세션은 그대로 둡니다.
   - 계정의 페르소나는 시작할 때 정한 것을 유지합니다. 쓰이고 있는 페르소나를 설정에서 빼면 Worker가 적용에 실패하고 지금 일정을 유지합니다.
+- **거버너.** Master(단독 실행이면 그 프로세스)가 `[governor] interval_seconds`(기본 60초)마다 최근 `window_seconds`(기본 300초)의 HTTP 요청 실패율과 p99를 봅니다. 실패율이 `max_failure_ratio`(기본 2%, 가정)를 넘거나 p99가 `max_p99_ms`(기본 3,000ms, 가정)를 넘으면 실제 배율을 절반으로 낮춥니다. `recovery_seconds`(기본 600초) 동안 정상이 이어지면 `recovery_step`(기본 0.1)씩 올리고, 상한은 사람이 `/kkugi/scale`로 정한 배율입니다.
+  - 세션·일정·계정 통계(`SESSION`, `SCHEDULE`, `ACCOUNT`)는 보지 않습니다. 놓친 세션은 서버 문제가 아니고, 세션 시간에는 생각 시간이 들어 있기 때문입니다.
+  - 창 안의 요청이 `min_requests`(기본 200건)보다 적거나, 배율을 바꾼 뒤 새 창이 아직 차지 않았거나, 통계를 초기화한 직후에는 판단하지 않습니다. 그래서 같은 나쁜 창으로 연달아 낮추지 않고, 요청이 적은 밤에 한두 건의 실패로 낮추지 않습니다.
+  - 사람이 배율을 정하면 거버너는 그 값에서 다시 시작합니다. 상태와 마지막으로 바꾼 이유는 `GET /kkugi/control`의 `governor`에서 보고, 배율을 바꿀 때마다 이유를 로그에 남깁니다.
+  - `[governor]`는 `/kkugi/reload`로 바꿀 수 있습니다. `enabled = false`로 끄면 사람이 정한 배율로 되돌립니다.
 - 나중에 붙은 Worker는 계정 범위를 승인받을 때 현재 배율과 다시 읽은 설정을 함께 받고, 그것을 적용한 뒤에 세션을 실행합니다.
 
 ### 통계 읽는 법
