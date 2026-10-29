@@ -49,13 +49,16 @@
 
 ## 단계 1. 시간대별 표
 
-### 1-1. 표와 활동 성향 설정
-- 고칠 곳: `config/default.toml`(`[traffic]` 새 표), `kkugi_load/config.py`
+### 1-1. 표와 활동 배수 설정
+- 방식: [공통 표 하나에 배수](decisions/2026-10-29-persona-scope.md). 계정의 확률 = 공통 표 × 페르소나 활동 배수 × 계정 활동 배수
+- 고칠 곳: `config/default.toml`(`[traffic]` 새 표, `[personas.dieter]`의 `activity`), `kkugi_load/config.py`, `kkugi_load/accounts/identity.py`(계정 활동 배수)
 - 내용
   - `open_probability`: 0~23시 각 시간대에 계정 하나가 앱을 열 확률, 24개. 시작 값은 결정 기록의 표
-  - `activity_multipliers`와 비중: 계정마다 확률에 곱할 배수(예: 0.5, 1.0, 1.5). 비중을 곱한 평균이 1이어야 한다
-  - 검증: 칸이 24개가 아니거나, 확률 × 가장 큰 배수가 1을 넘거나, 평균 배수가 1이 아니면 시작하지 않는다
-- 테스트: 정상 설정 읽기, 각 검증이 실패하는지
+  - `activity_multipliers`: 계정 활동 배수와 비중의 목록(예: 0.5, 1.0, 1.5). 비중을 곱한 평균이 1이어야 한다
+  - 페르소나 활동 배수 `activity`: 다이어터 1.0
+  - 계정 활동 배수는 시드와 계정 번호로 정한다(재시작해도 같다)
+  - 검증: 칸이 24개가 아니거나, 확률이 0~1 밖이거나, 평균 배수가 1이 아니거나, 확률 × 가장 큰 페르소나 배수 × 가장 큰 계정 배수가 1을 넘으면 시작하지 않는다
+- 테스트: 정상 설정 읽기, 각 검증 실패, 계정 20,000개의 계정 활동 배수 평균이 1에 가까운지
 
 ### 1-2. 조회 세션
 - 고칠 곳: `kkugi_load/sessions/view.py`(새 파일), `kkugi_load/runner.py`의 `SESSIONS`
