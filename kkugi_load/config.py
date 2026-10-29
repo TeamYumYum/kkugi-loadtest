@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import tomllib
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = ROOT / "config" / "default.toml"
 DEFAULT_STATE_DB = ROOT / "state" / "accounts.db"
+# 시간대별 확률표의 칸 수. 인덱스가 한국 시간의 시(0~23)다
+HOURS = 24
 
 
 @dataclass(frozen=True)
@@ -50,8 +53,12 @@ class Config:
     # realtime 또는 immediate(scheduler.py)
     schedule_mode: str
     max_lateness: timedelta
-    # 페르소나 이름 → [personas.<이름>] 표
+    # 페르소나 이름 → [personas.<이름>] 표. 표마다 activity(페르소나 활동 배수)가 있음을 검증했다
     personas: dict[str, dict[str, Any]]
+    # 시간대별로 계정 하나가 앱을 열 확률. 24개, 인덱스가 한국 시간의 시
+    open_probability: tuple[float, ...]
+    # 계정 활동 배수와 비중 (배수, 비중). 비중 가중 평균 배수가 1이다
+    activity_multipliers: tuple[tuple[float, float], ...]
     pool: Pool
     state_db: Path
 
@@ -59,6 +66,50 @@ class Config:
 def hhmm(value: str) -> time:
     hour, minute = value.split(":")
     return time(int(hour), int(minute))
+
+
+def read_traffic(
+    traffic: dict[str, Any], personas: dict[str, dict[str, Any]]
+) -> tuple[tuple[float, ...], tuple[tuple[float, float], ...]]:
+    """[traffic] 표와 페르소나 activity를 검증한다. 어긋나면 이유를 담은 ValueError를 낸다."""
+    for key in ("open_probability", "activity_multipliers"):
+        if key not in traffic:
+            raise ValueError(f"[traffic]에 {key}가 없다")
+    table = tuple(float(p) for p in traffic["open_probability"])
+    if len(table) != HOURS:
+        raise ValueError(f"[traffic] open_probability는 {HOURS}개여야 한다: {len(table)}개")
+    for hour, p in enumerate(table):
+        if not 0 <= p <= 1:
+            raise ValueError(f"[traffic] open_probability[{hour}]가 0~1 밖이다: {p}")
+
+    if any(len(pair) != 2 for pair in traffic["activity_multipliers"]):
+        raise ValueError("[traffic] activity_multipliers의 항목은 [배수, 비중] 두 값이어야 한다")
+    multipliers = tuple((float(m), float(w)) for m, w in traffic["activity_multipliers"])
+    if not multipliers:
+        raise ValueError("[traffic] activity_multipliers가 비어 있다")
+    for m, w in multipliers:
+        if m <= 0 or w <= 0:
+            raise ValueError(f"[traffic] activity_multipliers의 배수와 비중은 양수여야 한다: [{m}, {w}]")
+    mean = sum(m * w for m, w in multipliers) / sum(w for _, w in multipliers)
+    if not math.isclose(mean, 1.0, rel_tol=0, abs_tol=1e-9):
+        raise ValueError(f"[traffic] activity_multipliers의 비중 가중 평균 배수가 1이 아니다: {mean}")
+
+    for name, persona in personas.items():
+        # 기본값으로 채우지 않는다. 빠지면 페르소나의 활동량을 모르는 채로 실행하게 된다
+        if "activity" not in persona:
+            raise ValueError(f"[personas.{name}]에 activity가 없다")
+        if float(persona["activity"]) <= 0:
+            raise ValueError(f"[personas.{name}] activity는 양수여야 한다: {persona['activity']}")
+
+    top_persona = max(float(p["activity"]) for p in personas.values())
+    top_account = max(m for m, _ in multipliers)
+    peak = max(table) * top_persona * top_account
+    if peak > 1:
+        raise ValueError(
+            f"확률 최댓값 {max(table)} × 페르소나 activity 최댓값 {top_persona} × 계정 배수 최댓값 {top_account}"
+            f" = {peak}로 1을 넘는다"
+        )
+    return table, multipliers
 
 
 def load(env: dict[str, str] | None = None) -> Config:
@@ -79,6 +130,7 @@ def load(env: dict[str, str] | None = None) -> Config:
     personas = raw.get("personas") or {}
     if not personas or sum(float(p["weight"]) for p in personas.values()) <= 0:
         raise ValueError("[personas]에 weight가 양수인 페르소나가 하나 이상 있어야 한다")
+    open_probability, activity_multipliers = read_traffic(raw.get("traffic") or {}, personas)
 
     pool_name = env.get("KKUGI_POOL", "base")
     pools = raw.get("pools") or {}
@@ -108,6 +160,8 @@ def load(env: dict[str, str] | None = None) -> Config:
         schedule_mode=env.get("KKUGI_SCHEDULE", "realtime"),
         max_lateness=timedelta(minutes=float(raw["schedule"]["max_lateness_minutes"])),
         personas=personas,
+        open_probability=open_probability,
+        activity_multipliers=activity_multipliers,
         pool=pool,
         state_db=Path(env.get("KKUGI_STATE_DB") or DEFAULT_STATE_DB),
     )

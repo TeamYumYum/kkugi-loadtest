@@ -1,10 +1,10 @@
-"""계정 번호에서 이메일, 페르소나, 식사 UUID를 정한다.
+"""계정 번호에서 이메일, 페르소나, 계정 활동 배수, 식사 UUID를 정한다.
 
 같은 시드와 계정 번호에서는 늘 같은 값이 나온다. 그래서 세션을 다시 실행해도 같은 식사 UUID가 나오고,
 서버의 clientUuid 멱등 처리로 중복 기록이 생기지 않는다.
 
 이메일만 계정 번호와 generation(탈퇴되어 다시 만든 횟수)으로 정한다. 식사 UUID는 이메일로 정하므로
-다시 만든 회원의 식사와 겹치지 않는다. 페르소나와 프로필은 계정 번호로만 정하므로 바뀌지 않는다.
+다시 만든 회원의 식사와 겹치지 않는다. 페르소나, 프로필, 계정 활동 배수는 계정 번호로만 정하므로 바뀌지 않는다.
 """
 
 from __future__ import annotations
@@ -48,6 +48,13 @@ def persona_of(config: Config, index: int) -> str:
     names = sorted(config.personas)
     weights = [float(config.personas[name]["weight"]) for name in names]
     return seeded_rng(config.seed, "persona", index).choices(names, weights=weights)[0]
+
+
+def activity_multiplier(config: Config, index: int) -> float:
+    """계정 활동 배수. activity_multipliers의 비중대로 고르며, 시드와 계정 번호로만 정하므로 재시작해도 같다."""
+    values = [m for m, _ in config.activity_multipliers]
+    weights = [w for _, w in config.activity_multipliers]
+    return seeded_rng(config.seed, "activity", index).choices(values, weights=weights)[0]
 
 
 def meal_uuid(email: str, day: date, meal_type: str) -> str:
