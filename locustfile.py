@@ -2,7 +2,9 @@
 
 Locust User는 계정이 아니라 실행기다. 이 프로세스가 맡은 계정들의 일정표(kkugi_load/scheduler.py)에서
 시각이 된 세션을 꺼내 실행한다. 그래서 User 수는 "동시에 진행할 수 있는 세션 수"이고, 계정 수와 다르다.
-User 수가 모자라면 SCHEDULE start_delay가 늘고 SCHEDULE missed가 생긴다.
+User 수가 모자라면 SCHEDULE start_delay가 늘고 SCHEDULE missed가 생긴다. 그래서 Worker(또는 단독 실행)는
+User 생성이 끝났을 때와 날짜가 바뀌어 새 일정을 만들었을 때, 가진 User 수가 오늘 일정의 필요 실행기 수
+(kkugi_load/capacity.py)보다 적으면 경고를 남긴다.
 
 분산 실행에서 Master는 세션을 실행하지 않고 Worker들의 계정 범위가 겹치지 않는지만 확인한다
 (kkugi_load/distributed.py). 계정은 Worker가 KKUGI_POOL로 고른 계정 풀에서 맡는다. Master는
@@ -25,6 +27,7 @@ from locust import HttpUser, constant, events, task
 from locust.runners import LocalRunner, MasterRunner, WorkerRunner
 
 from kkugi_load import config as config_module
+from kkugi_load.capacity import shortage_warning
 from kkugi_load.accounts.identity import Account
 from kkugi_load.accounts.state import AccountState, StateStore
 from kkugi_load.client.api import KkugiApi
@@ -41,6 +44,18 @@ SCHEDULER: Scheduler | None = None
 GATE: WorkerGate | None = None
 ACCOUNTS: dict[int, Account] = {}
 STATES: dict[int, AccountState] = {}
+# User 생성이 한 번이라도 끝났는가. 그 전에는 User 수가 다 차지 않아 실행기 부족 경고를 하지 않는다
+SPAWNED = False
+
+
+def _warn_capacity(environment) -> None:
+    """이 프로세스가 가진 User 수가 오늘 일정의 필요 실행기 수보다 적으면 경고한다."""
+    if SCHEDULER is None or SCHEDULER.capacity is None:
+        return
+    # Worker에서는 자기 User 수다(Runner.user_count = 실행 중인 User greenlet 수)
+    message = shortage_warning(SCHEDULER.capacity, environment.runner.user_count)
+    if message:
+        log.warning(message)
 
 
 @events.init.add_listener
@@ -58,6 +73,8 @@ def _on_init(environment, **_kwargs):
     ACCOUNTS.update({account.index: account for account in accounts})
     SCHEDULER = Scheduler(
         CONFIG, accounts, CONFIG.schedule_mode, CONFIG.max_lateness, lambda: datetime.now(CONFIG.tz), pool,
+        # 날짜가 바뀌어 새 일정을 만들면 다시 확인한다. 첫 일정은 User 생성이 끝났을 때 확인한다
+        on_plan=lambda _capacity: _warn_capacity(environment) if SPAWNED else None,
     )
     log.info(
         "계정 풀 %s: %d-%d(%d개), 시간대 %s, 일정 방식 %s, 상태 DB %s", pool.name, pool.start, pool.end - 1,
@@ -68,6 +85,18 @@ def _on_init(environment, **_kwargs):
         GATE = setup_worker(environment, pool)
     else:
         GATE = WorkerGate(accepted=True)
+
+
+@events.spawning_complete.add_listener
+def _on_spawning_complete(environment, **_kwargs):
+    # 인자 user_count는 분산 실행에서 전체 Worker의 합계라 쓰지 않는다. Master에는 일정이 없어 확인하지 않는다
+    global SPAWNED
+    if SCHEDULER is None:
+        return
+    SPAWNED = True
+    # Master가 계정 범위를 승인하기 전이면 일정이 아직 없다. 세션은 실행하지 않고 일정만 만든다
+    if not SCHEDULER.plan_if_needed():
+        _warn_capacity(environment)
 
 
 @events.quitting.add_listener

@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from kkugi_load.accounts.identity import Account
+from kkugi_load.capacity import Capacity, estimate
 from kkugi_load.config import Config, Pool
 from kkugi_load.personas import PERSONAS
 from kkugi_load.personas.base import PlannedSession
@@ -53,6 +54,7 @@ class Scheduler:
     def __init__(
         self, config: Config, accounts: list[Account], mode: str, max_lateness: timedelta,
         now: Callable[[], datetime], pool: Pool | None = None,
+        on_plan: Callable[[Capacity], None] | None = None,
     ):
         if mode not in (REALTIME, IMMEDIATE):
             raise ValueError(f"알 수 없는 일정 방식: {mode}")
@@ -68,13 +70,18 @@ class Scheduler:
         self._planned_day: date | None = None
         # 발생기를 켜기 전에 지나 버려 실행하지 않은 세션 수
         self.dropped_before_start = 0
+        # 가장 최근에 만든 일정의 실행기 필요량(capacity.py). 일정을 만들기 전에는 None
+        self.capacity: Capacity | None = None
+        # 새 일정을 만들 때마다 실행기 필요량을 넘겨 부른다
+        self.on_plan = on_plan
 
     def _push(self, at: datetime, planned: PlannedSession) -> None:
         heapq.heappush(self._heap, _Entry(at, next(self._seq), planned))
 
     def _plan(self, day: date) -> None:
         now = self.now()
-        planned_count, dropped = 0, 0
+        kept: list[PlannedSession] = []
+        dropped = 0
         for account in self.accounts:
             for planned in PERSONAS[account.persona].plan_day(self.config, account, day):
                 if self.pool and not self.pool.allows(planned.at.time()):
@@ -82,17 +89,34 @@ class Scheduler:
                 if self.mode == REALTIME and planned.at < now - self.max_lateness:
                     dropped += 1
                     continue
-                planned_count += 1
-                self._push(now if self.mode == IMMEDIATE else planned.at, planned)
+                kept.append(planned)
+        # 그날 남은 일정만 센다. 시작 전에 지난 세션은 실행하지 않으므로 실행기가 필요 없다.
+        # 모르는 세션 종류면 여기서 오류가 나므로 일정에 넣기 전에 계산한다
+        self.capacity = estimate(self.config, kept)
+        for planned in kept:
+            self._push(now if self.mode == IMMEDIATE else planned.at, planned)
         self._planned_day = day
         self.dropped_before_start += dropped
-        log.info("%s 일정: 세션 %d개 예정, 시작 전에 지난 %d개 제외", day, planned_count, dropped)
+        log.info(
+            "%s 일정: 세션 %d개 예정, 시작 전에 지난 %d개 제외. 필요 실행기 %d개(가장 바쁜 시간대 %s시, 평균 동시 세션 %.1f)",
+            day, len(kept), dropped, self.capacity.required_users, self.capacity.busiest_hour,
+            self.capacity.busiest_concurrency,
+        )
+        if self.on_plan is not None:
+            self.on_plan(self.capacity)
 
-    def next(self) -> Due | Missed | None:
-        """실행할 세션을 꺼낸다. 받은 쪽은 실행이 끝나면 release를 부른다. 실행할 것이 없으면 None."""
+    def plan_if_needed(self) -> bool:
+        """오늘 일정이 아직 없거나(realtime에서) 날짜가 바뀌었으면 새로 만든다. 만들었으면 True."""
         now = self.now()
         if self._planned_day is None or (self.mode == REALTIME and now.date() > self._planned_day):
             self._plan(now.date())
+            return True
+        return False
+
+    def next(self) -> Due | Missed | None:
+        """실행할 세션을 꺼낸다. 받은 쪽은 실행이 끝나면 release를 부른다. 실행할 것이 없으면 None."""
+        self.plan_if_needed()
+        now = self.now()
 
         postponed = []
         try:
