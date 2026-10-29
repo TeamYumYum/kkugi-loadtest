@@ -1,6 +1,9 @@
 """꾸기 backend 호출. 공통 응답 포장 해석, 토큰 관리, Locust 통계 이름을 맡는다.
 
 통계 이름에는 식별자를 넣지 않고 경로 템플릿을 쓴다(예: /daily-summaries/{date}).
+경로 표시(Config.route, KKUGI_ROUTE)가 있으면 HTTP 요청의 통계 이름 앞에 붙인다(예: [public] GET /foods).
+공인 경로 전용 Worker의 응답 시간을 프라이빗 경로와 나눠 보기 위해서다. 요청은 모두 여기서 보내므로 붙이는
+곳도 여기 하나다. 세션·일정·계정 통계(kkugi_load/runner.py)는 경로와 상관없는 값이라 붙이지 않는다.
 
 어느 요청에서든 401 MEMBER_WITHDRAWN을 받으면 바깥에서 탈퇴된 것이다. generation을 올려 다음 로그인이
 새 이메일로 새 회원을 만들게 하고, AccountWithdrawn으로 이번 세션을 끝낸다.
@@ -110,9 +113,10 @@ class KkugiApi:
             headers[self.config.synthetic_header[0]] = self.config.synthetic_header[1]
         if auth:
             headers["Authorization"] = f"Bearer {self.state.access_token}"
+        # 오류 메시지(ApiError)에는 경로 표시 없는 이름을 쓴다. 표시는 통계를 나눠 보는 용도다
         with self.client.request(
-            method, self.config.api_prefix + path, name=name, headers=headers, json=json_body, params=params,
-            catch_response=True,
+            method, self.config.api_prefix + path, name=self.config.route_prefix + name, headers=headers,
+            json=json_body, params=params, catch_response=True,
         ) as response:
             status = response.status_code
             data, code, message = _parse(response)

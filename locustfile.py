@@ -23,6 +23,8 @@ User 생성이 끝났을 때와 날짜가 바뀌어 새 일정을 만들었을 �
 - [setup] ..., [auth] ...  계정 준비와 토큰 발급. 세션 요청과 나눠 본다
 - SESSION ..., SCHEDULE .. 세션 결과, 일정 지연, 배율로 거른 세션(kkugi_load/runner.py)
 - ACCOUNT withdrawn         바깥에서 탈퇴된 계정. 다음 세션이 새 이메일로 가입한다(kkugi_load/runner.py)
+KKUGI_ROUTE(예: public)로 띄운 Worker는 HTTP 요청 이름 앞에 [public]을 붙인다(예: [public] GET /foods,
+[public] [auth] POST /auth/login/dev). SESSION, SCHEDULE, ACCOUNT에는 붙이지 않는다(kkugi_load/client/api.py).
 """
 
 from __future__ import annotations
@@ -102,9 +104,10 @@ def _on_init(environment, **_kwargs):
         on_plan=lambda _capacity: _warn_capacity(environment) if SPAWNED else None,
     )
     log.info(
-        "계정 풀 %s: %d-%d(%d개), 시간대 %s, 일정 방식 %s, 상태 DB %s, 시작 배율 %s", pool.name, pool.start,
-        pool.end - 1, pool.count, [f"{a:%H:%M}-{b:%H:%M}" for a, b in pool.only_between] or "하루 전체",
-        CONFIG.schedule_mode, CONFIG.state_db, CONFIG.scale,
+        "계정 풀 %s: %d-%d(%d개), 시간대 %s, 일정 방식 %s, 상태 DB %s, 시작 배율 %s, 경로 표시 %s", pool.name,
+        pool.start, pool.end - 1, pool.count,
+        [f"{a:%H:%M}-{b:%H:%M}" for a, b in pool.only_between] or "하루 전체",
+        CONFIG.schedule_mode, CONFIG.state_db, CONFIG.scale, CONFIG.route or "없음",
     )
     applier = Applier(SCHEDULER, CONFIG_TEXT, ENV)
     if isinstance(environment.runner, WorkerRunner):

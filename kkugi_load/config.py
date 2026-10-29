@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import tomllib
 from dataclasses import dataclass, fields
 from datetime import time, timedelta
@@ -29,6 +30,9 @@ HOURS = 24
 # 운영 중에 다시 읽어도 바꿀 수 없는 최상위 키. 바뀌면 계정의 이메일, 인증, 계정 범위가 달라져
 # 이미 만든 회원이나 다른 Worker의 범위와 어긋난다
 FROZEN_KEYS = ("timezone", "api_prefix", "accounts", "auth", "synthetic", "pools")
+# 경로 표시(KKUGI_ROUTE)에 쓸 수 있는 글자. 통계 이름 앞에 [값]으로 붙으므로 공백이나 괄호가 섞이면
+# 이름을 읽기 어렵고 경로별로 나눠 보기도 어렵다
+ROUTE_PATTERN = re.compile(r"[a-z0-9-]+")
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,15 @@ class Config:
     # 시작할 때의 배율(0~1). 계획된 세션을 이 확률로만 실행한다(scheduler.py). 운영 중에는 Master가 바꾼다
     scale: float
     governor: GovernorSettings
+    # 이 Worker가 요청을 보내는 경로의 표시(KKUGI_ROUTE, 예: public). 비어 있으면 표시하지 않는다.
+    # 경로 자체는 컨테이너의 이름 해석이 정하고(notes/decisions/2026-10-29-route-split.md), 이 값은 HTTP 요청의
+    # 통계 이름을 경로별로 나눠 보기 위한 것이다
+    route: str = ""
+
+    @property
+    def route_prefix(self) -> str:
+        """HTTP 요청 통계 이름 앞에 붙일 경로 표시. 예: "[public] ". 경로 표시가 없으면 빈 문자열이다."""
+        return f"[{self.route}] " if self.route else ""
 
 
 @dataclass(frozen=True)
@@ -199,6 +212,13 @@ def read_governor(table: Any) -> GovernorSettings:
     return settings
 
 
+def read_route(value: str) -> str:
+    """KKUGI_ROUTE 값을 검증한다. 영문 소문자, 숫자, 하이픈만 허용하고 어긋나면 이유를 담은 ValueError를 낸다."""
+    if value and not ROUTE_PATTERN.fullmatch(value):
+        raise ValueError(f"KKUGI_ROUTE는 영문 소문자, 숫자, 하이픈만 쓸 수 있다: {value!r}")
+    return value
+
+
 def config_path(env: dict[str, str]) -> Path:
     return Path(env.get("KKUGI_CONFIG") or DEFAULT_CONFIG)
 
@@ -224,7 +244,7 @@ def load(env: dict[str, str] | None = None) -> Config:
 
 
 def loads(text: str, env: dict[str, str] | None = None) -> Config:
-    """설정 원문과 환경 변수로 설정을 만든다. 계정 풀과 일정 방식, 상태 DB는 환경 변수가 정한다."""
+    """설정 원문과 환경 변수로 설정을 만든다. 계정 풀과 일정 방식, 상태 DB, 경로 표시는 환경 변수가 정한다."""
     env = dict(os.environ) if env is None else env
     raw = tomllib.loads(text)
 
@@ -261,6 +281,7 @@ def loads(text: str, env: dict[str, str] | None = None) -> Config:
         raise ValueError("[control]에 scale이 없다")
     scale = read_scale(raw["control"]["scale"])
     governor = read_governor(raw.get("governor"))
+    route = read_route(env.get("KKUGI_ROUTE", ""))
 
     return Config(
         tz=ZoneInfo(raw["timezone"]),
@@ -281,4 +302,5 @@ def loads(text: str, env: dict[str, str] | None = None) -> Config:
         state_db=Path(env.get("KKUGI_STATE_DB") or DEFAULT_STATE_DB),
         scale=scale,
         governor=governor,
+        route=route,
     )

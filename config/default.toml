@@ -82,9 +82,15 @@ recovery_step = 0.1
 # only_between이 있으면 그 시간대(한국 시간)에 계획된 세션만 실행한다.
 
 [pools.base]
-# 서버의 상시 Worker
+# 서버의 상시 Worker(프라이빗 경로). 계정 수를 늘릴 때 public과 같은 비율(95:5)로 함께 늘린다
 start = 0
-count = 1000
+count = 950
+
+[pools.public]
+# 공인 경로 전용 Worker. base와 같은 비율로 함께 늘린다. KKUGI_ROUTE=public으로 띄워 HTTP 요청 통계 이름에
+# [public]을 붙인다. 요청의 5%를 공인 주소로 보내기 위한 풀이다(notes/decisions/2026-10-29-route-split.md)
+start = 950
+count = 50
 
 [pools.peak-1]
 # 팀원 노트북 Worker. 피크 시간대에만 추가 인구로 활동한다. 노트북마다 다른 풀을 쓴다. 가정
