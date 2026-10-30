@@ -1,9 +1,10 @@
-"""다이어터. 끼니 창에서 처음 앱을 열 때 그 끼니를 기록하고, 아침에는 체중을 재고, 그 밖에 열 때는 홈 화면만 본다.
+"""다이어터. 끼니 창에서 처음 앱을 열 때 그 끼니를 기록하고, 아침에는 체중을 재고, 저녁에는 가끔 운동을 기록하고, 그 밖에 열 때는 홈 화면만 본다.
 
 앱을 여는 시각은 공통 시간대 표가 정한다(base.open_times). 끼니 창(간식 창 포함) 안에서 그날 처음 연 세션만 그 끼니의
 probability로 식사 기록(meal_log)이 되고, 나머지는 조회(view)다. 그래서 끼니마다 식사 기록은 하루 최대 한 번이다.
 식사 기록의 일부(edit_probability)는 저장 직후 음식 하나의 양을 고친다.
 체중 창 안의 조회 세션 중 그날 첫 번째는 body_weight.probability로 체중 기록(weight_log)이 된다. 체중 기록도 하루 최대 한 번이다.
+운동 창 안의 조회 세션 중 그날 첫 번째는 주간 목표 횟수 / 7 확률로 운동 기록(workout)이 된다. 운동 기록도 하루 최대 한 번이다.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from kkugi_load.personas.base import BodyProfile, Persona, PlannedSession, open_
 from kkugi_load.sessions.meal_log import MealInputs
 from kkugi_load.sessions.view import ViewInputs
 from kkugi_load.sessions.weight_log import WeightInputs, drifted_weight
+from kkugi_load.sessions.workout import BODY_PARTS, EXERCISES_PER_ROUTINE, SETS_PER_EXERCISE, WorkoutInputs
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,9 @@ class Dieter(Persona):
         weight_start, weight_end = hhmm(weight["from"]), hhmm(weight["to"])
         # 체중 창에서 체중 기록 여부를 이미 정했는지. 첫 조회 세션에서 한 번만 정한다
         weight_decided = False
+        workout = settings["workout"]
+        workout_start, workout_end = hhmm(workout["from"]), hhmm(workout["to"])
+        workout_decided = False
         planned = []
         for at in open_times(config, self.name, account.index, day):
             meal_type = next((name for name, start, end in windows if start <= at.time() < end), None)
@@ -60,6 +65,12 @@ class Dieter(Persona):
             if not weight_decided and weight_start <= at.time() < weight_end:
                 weight_decided = True
                 session = self._plan_weight(config, account, day, at)
+                if session is not None:
+                    planned.append(session)
+                    continue
+            if not workout_decided and workout_start <= at.time() < workout_end:
+                workout_decided = True
+                session = self._plan_workout(config, account, day, at)
                 if session is not None:
                     planned.append(session)
                     continue
@@ -81,6 +92,36 @@ class Dieter(Persona):
             (2 * noise - 1) * float(weight["noise_kg"]),
         )
         return PlannedSession(account.index, "dieter_weight", at, "weight_log", WeightInputs(planned_at=at, weight_kg=kg))
+
+    def _plan_workout(self, config: Config, account: Account, day: date, at: datetime) -> PlannedSession | None:
+        """운동 창의 첫 조회 세션을 운동 기록으로 할지 정한다. 기록하지 않으면 None.
+
+        주간 목표와 루틴 값은 계정마다 고정이다. 준비가 실패해 다른 날 다시 해도 같은 목표와 루틴을 만든다.
+        """
+        workout = config.personas[self.name]["workout"]
+        slots = int(workout["routines_max"]) * EXERCISES_PER_ROUTINE
+        # 계정 고정 값: 주간 목표 1개, 루틴 수 1개, 그 뒤로 루틴 종목 칸마다 하나씩
+        fixed = seeded_uniforms(config.seed, "workout_plan", account.index, count=2 + slots)
+        low, high = int(workout["weekly_target_min"]), int(workout["weekly_target_max"])
+        target = low + int(fixed[0] * (high - low + 1))
+        # 날짜 값: 기록 여부, 운동 시간, 둘러보기 여부, 부위, 루틴 고르기 각 1개, 그 뒤로 세트마다 하나씩
+        sets = EXERCISES_PER_ROUTINE * SETS_PER_EXERCISE
+        u = seeded_uniforms(config.seed, "workout", account.index, day.isoformat(), count=5 + sets)
+        if u[0] >= target / 7:
+            return None
+        minutes_min, minutes_max = int(workout["duration_minutes_min"]), int(workout["duration_minutes_max"])
+        browse = u[2] < float(workout["browse_probability"])
+        inputs = WorkoutInputs(
+            planned_at=at,
+            weekly_target=target,
+            routine_count=1 + int(fixed[1] * int(workout["routines_max"])),
+            routine_seeds=fixed[2:],
+            routine_pick=int(u[4] * 1000),
+            browse_body_part=BODY_PARTS[int(u[3] * len(BODY_PARTS))] if browse else None,
+            duration_minutes=minutes_min + int(u[1] * (minutes_max - minutes_min + 1)),
+            set_rolls=u[5:],
+        )
+        return PlannedSession(account.index, "dieter_workout", at, "workout", inputs)
 
     def _plan_meal(self, config: Config, account: Account, day: date, meal_type: str, at: datetime) -> PlannedSession | None:
         """끼니 창의 첫 세션을 식사 기록으로 할지 정한다. 기록하지 않으면 None.

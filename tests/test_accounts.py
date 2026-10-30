@@ -61,8 +61,8 @@ def test_dieter_meals_follow_settings():
     for index in range(300):
         account, plan = _plan(index)
         for session in plan:
-            if session.session in ("view", "weight_log"):
-                assert session.name in ("dieter_view", "dieter_weight")
+            if session.session in ("view", "weight_log", "workout"):
+                assert session.name in ("dieter_view", "dieter_weight", "dieter_workout")
                 assert session.inputs.planned_at == session.at
                 continue
             meals += 1

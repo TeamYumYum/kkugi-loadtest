@@ -50,6 +50,8 @@ CATALOG_PAGE_SIZE = 100
 BROWSE_PAGE_SIZE = 20
 # 일정 목록과 기록 목록을 보는 기간(오늘 포함 7일)
 WINDOW_DAYS = 7
+# 종목 둘러보기에 쓰는 부위. 서버의 bodyPart 값이다
+BODY_PARTS = ("LOWER_BODY", "BACK", "CHEST", "SHOULDER", "ARM", "CORE")
 
 # 종목 ID → 종목. 프로세스 하나가 한 번 채우고 모든 계정이 함께 쓴다. 폰도 카탈로그 사본을 두고 쓰므로
 # 세션마다 다시 받지 않는다. 서버는 제공 중인 종목만 돌려주므로, 루틴에 있는데 여기 없는 종목은 내려간 종목이다

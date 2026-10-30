@@ -64,7 +64,7 @@ def test_one_session_per_hour_and_one_meal_per_window():
         assert all(n == 1 for n in logged.values())
         for session in plan:
             if session.session != "meal_log":
-                assert (session.session, session.name) in {("view", "dieter_view"), ("weight_log", "dieter_weight")}
+                assert (session.session, session.name) in {("view", "dieter_view"), ("weight_log", "dieter_weight"), ("workout", "dieter_workout")}
                 continue
             window = meals[session.inputs.meal_type]
             assert hhmm(window["from"]) <= session.at.time() < hhmm(window["to"])
@@ -157,3 +157,35 @@ def test_meal_inputs_keep_values_from_before_edit_was_added():
             meal = session.inputs
             old = seeded_uniforms(CONFIG.seed, "meal", index, DAY.isoformat(), meal.meal_type, count=1 + 3 * items)
             assert meal.picks == tuple(int(x * 1000) for x in old[1 + 2 * items:])
+
+
+def test_evening_workout_follows_weekly_target(plans):
+    """운동은 운동 창의 첫 조회 세션이고, 계정 값은 날짜와 관계없이 같고, 하루 비율은 목표 / 7을 넘지 않는다."""
+    from kkugi_load.sessions.workout import BODY_PARTS, EXERCISES_PER_ROUTINE, SETS_PER_EXERCISE
+    workout = CONFIG.personas["dieter"]["workout"]
+    start, end = hhmm(workout["from"]), hhmm(workout["to"])
+    sessions = 0
+    targets = []
+    for index, plan in enumerate(plans[:2000]):
+        records = [p for p in plan if p.session == "workout"]
+        assert len(records) <= 1
+        for record in records:
+            sessions += 1
+            assert start <= record.at.time() < end
+            assert not [p for p in plan if p.session == "view" and start <= p.at.time() < record.at.time()]
+            inputs = record.inputs
+            assert workout["weekly_target_min"] <= inputs.weekly_target <= workout["weekly_target_max"]
+            assert 1 <= inputs.routine_count <= workout["routines_max"]
+            assert len(inputs.routine_seeds) == workout["routines_max"] * EXERCISES_PER_ROUTINE
+            assert len(inputs.set_rolls) == EXERCISES_PER_ROUTINE * SETS_PER_EXERCISE
+            assert workout["duration_minutes_min"] <= inputs.duration_minutes <= workout["duration_minutes_max"]
+            assert inputs.browse_body_part in (None, *BODY_PARTS)
+            targets.append(inputs.weekly_target)
+            # 계정 고정 값은 다른 날에도 같다
+            other = [p for p in _plan(index, day=date(2026, 10, 29)) if p.session == "workout"]
+            for o in other:
+                assert (o.inputs.weekly_target, o.inputs.routine_count, o.inputs.routine_seeds) == (
+                    inputs.weekly_target, inputs.routine_count, inputs.routine_seeds)
+    assert sessions > 0
+    assert sessions <= 2000 * workout["weekly_target_max"] / 7
+    assert set(targets) == set(range(workout["weekly_target_min"], workout["weekly_target_max"] + 1))
