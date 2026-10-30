@@ -33,12 +33,20 @@ def session_seconds(config: Config, session: str) -> float:
     새 세션 종류를 더하면 여기에도 더한다. 모르는 종류는 ValueError를 낸다.
     """
     if session == "meal_log":
-        # 음식마다 검색 생각 시간과 선택 생각 시간이 한 번씩 들어간다. 음식 수는 다이어터 설정을 쓴다
+        # 음식마다 검색 생각 시간과 선택 생각 시간이 한 번씩 들어간다. 음식 수는 다이어터 설정을 쓴다.
+        # 저장 직후 양을 고치는 식사(edit_probability, 15%)의 선택 생각 시간 한 번은 평균 0.4초 정도라 여유 배수로 흡수한다
         items = int(config.personas["dieter"]["items_per_meal"])
         return items * (_mean(config.search_think) + _mean(config.select_think)) + REQUEST_SECONDS
     if session == "view":
         # 생각 시간 없이 조회 세 건
         return REQUEST_SECONDS
+    if session == "weight_log":
+        # 체중을 입력하는 생각 시간 한 번
+        return _mean(config.select_think) + REQUEST_SECONDS
+    if session == "workout":
+        # 운동 자체는 세션 밖이다(끝난 기록을 올린다). 종목 둘러보기와 주간 일정 고르기의 생각 시간을 한 번씩 넉넉히 잡고,
+        # 요청이 열 건 안팎이라 요청 시간을 두 배로 둔다
+        return _mean(config.search_think) + _mean(config.select_think) + 2 * REQUEST_SECONDS
     raise ValueError(f"평균 길이를 모르는 세션 종류: {session}")
 
 

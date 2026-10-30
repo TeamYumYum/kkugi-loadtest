@@ -129,13 +129,16 @@ grams_min = 100
 grams_max = 300
 # 계정마다 main_keywords에서 뽑아 두는 선호 음식 수
 preferred_keywords = 4
+# 식사 기록 중 저장 직후 음식 하나의 양을 고치는 비율. 서비스 저장소 docs/operations/synthetic-traffic.md 4.2절의 가정값
+edit_probability = 0.15
 # 검색어 후보. 공식 음식 목록 seed에서 결과가 나오는 것을 확인한 단어다(2026-10-28)
 breakfast_keywords = ["오트밀", "요거트", "바나나", "사과", "토스트", "달걀", "고구마", "우유"]
 main_keywords = ["김밥", "비빔밥", "샐러드", "닭가슴살", "된장찌개", "김치찌개", "현미밥", "두부", "샌드위치", "제육볶음"]
 
-# 끼니 창(한국 시간, from 이상 to 미만)과 기록 확률. 창은 [traffic] 표의 피크와 앞뒤 완충 시간대에 맞춘다.
-# 그 끼니 창에서 그날 처음 연 세션이 이 확률로 식사 기록 세션이 된다. 나머지 세션은 모두 조회 세션이다.
-# 그래서 끼니마다 식사 기록은 하루 최대 한 번이다. 확률 값은 가정
+# 끼니 창(한국 시간, from 이상 to 미만)과 기록 확률. 세 끼니 창은 [traffic] 표의 피크와 앞뒤 완충 시간대에 맞춘다.
+# 그 끼니 창에서 그날 처음 연 세션이 이 확률로 식사 기록 세션이 된다. 나머지 세션은 조회 세션이다(체중 기록 제외).
+# 그래서 끼니마다 식사 기록은 하루 최대 한 번이다. 창은 정시에 걸쳐야 하고 서로 겹치면 안 된다. 확률 값은 가정.
+# 아침과 간식은 breakfast_keywords에서, 점심·저녁은 계정의 선호 음식에서 검색어를 고른다
 [personas.dieter.meals.BREAKFAST]
 probability = 0.6
 from = "06:00"
@@ -150,3 +153,45 @@ to = "14:00"
 probability = 0.9
 from = "17:00"
 to = "20:00"
+
+# 오후 간식. 점심과 저녁 사이 창에서 그날 처음 연 세션이 이 확률로 간식 기록이 된다. 창과 확률은 가정
+[personas.dieter.meals.SNACK]
+probability = 0.3
+from = "14:00"
+to = "17:00"
+
+# 아침 체중. 이 창 안의 조회 세션 중 그날 첫 번째가 probability로 체중 기록 세션이 된다(식사 기록 세션은 바꾸지 않는다).
+# 체중 = 온보딩 체중 + (날짜 - reference_date)일 × trend_kg_per_day ± noise_kg. 20-300kg로 자르고 0.1kg로 반올림한다.
+# reference_date를 바꾸면 모든 계정의 체중이 바뀐다. 값은 모두 가정
+[personas.dieter.body_weight]
+probability = 0.4
+from = "06:00"
+to = "10:00"
+reference_date = "2026-10-30"
+trend_kg_per_day = -0.05
+noise_kg = 0.5
+
+# 저녁 운동. 저녁 끼니 창 뒤에 둔다. 이 창 안의 조회 세션 중 그날 첫 번째가 weekly_target / 7 확률로 운동 기록 세션이 된다(식사·체중 기록은 바꾸지 않는다).
+# weekly_target은 계정마다 [weekly_target_min, weekly_target_max]에서 고정으로 정하고, 처음 운동할 때 주간 목표로 등록한다.
+# 창 안에 앱을 열지 않은 날은 운동하지 않으므로 실제 횟수는 목표보다 적다. 값은 모두 가정
+[personas.dieter.workout]
+from = "20:00"
+to = "23:00"
+weekly_target_min = 2
+weekly_target_max = 3
+# 처음 만들 루틴 수의 최댓값(1 이상)
+routines_max = 2
+duration_minutes_min = 30
+duration_minutes_max = 60
+# 업로드 전에 부위별 종목 목록을 둘러보는 비율
+browse_probability = 0.3
+# 루틴을 직접 만드는 회원 비율. 나머지는 루틴 없이 자유 운동을 기록한다. 서비스에 AI 추천 루틴이 아직 없다(MVP2)
+custom_routine_probability = 0.3
+# 근력 수준. 1.0은 운동을 막 시작한 성인 남성이다. 여성은 0.65배, 회원마다 0.8-1.2배 차이를 둔다(sessions/workout.py)
+strength = 0.6
+# 무게·횟수 종목의 목표 횟수. 가벼운 무게로 많이 한다
+reps_min = 10
+reps_max = 15
+# 하고 싶은 종목을 검색했는데 카탈로그에 없어서, 그 부위를 둘러보고 다른 종목을 더하는 운동의 비율(가정).
+# 서비스에 회원이 종목을 직접 만드는 기능은 없다
+missing_exercise_probability = 0.02

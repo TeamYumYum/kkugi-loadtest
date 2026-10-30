@@ -61,8 +61,8 @@ def test_dieter_meals_follow_settings():
     for index in range(300):
         account, plan = _plan(index)
         for session in plan:
-            if session.session == "view":
-                assert session.name == "dieter_view"
+            if session.session in ("view", "weight_log", "workout"):
+                assert session.name in ("dieter_view", "dieter_weight", "dieter_workout")
                 assert session.inputs.planned_at == session.at
                 continue
             meals += 1
@@ -75,7 +75,9 @@ def test_dieter_meals_follow_settings():
             assert len(meal.keywords) == settings["items_per_meal"]
             assert not set(meal.keywords) & set(meal.fallback_keywords)
             assert all(settings["grams_min"] <= g <= settings["grams_max"] for g in meal.grams)
-            if meal.meal_type != "BREAKFAST":
+            if meal.meal_type in ("BREAKFAST", "SNACK"):
+                assert set(meal.keywords) <= set(settings["breakfast_keywords"])
+            else:
                 assert set(meal.keywords) <= set(account.profile.preferred_keywords)
     # 끼니마다 기록 확률(가정)로 남으므로 300명이면 식사 기록이 충분히 나온다
     assert meals > 300
