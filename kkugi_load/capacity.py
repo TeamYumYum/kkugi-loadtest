@@ -43,6 +43,10 @@ def session_seconds(config: Config, session: str) -> float:
     if session == "weight_log":
         # 체중을 입력하는 생각 시간 한 번
         return _mean(config.select_think) + REQUEST_SECONDS
+    if session == "workout":
+        # 운동 자체는 세션 밖이다(끝난 기록을 올린다). 종목 둘러보기와 주간 일정 고르기의 생각 시간을 한 번씩 넉넉히 잡고,
+        # 요청이 열 건 안팎이라 요청 시간을 두 배로 둔다
+        return _mean(config.search_think) + _mean(config.select_think) + 2 * REQUEST_SECONDS
     raise ValueError(f"평균 길이를 모르는 세션 종류: {session}")
 
 

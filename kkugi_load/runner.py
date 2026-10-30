@@ -21,13 +21,16 @@ from typing import Callable
 from kkugi_load.client.api import AccountWithdrawn, ApiError, KkugiApi
 from kkugi_load.config import Config
 from kkugi_load.personas.base import PlannedSession
-from kkugi_load.sessions import meal_log, steps, view, weight_log
+from kkugi_load.sessions import meal_log, steps, view, weight_log, workout
 from kkugi_load.sessions.base import SessionContext, SessionSkipped
 
 log = logging.getLogger("kkugi")
 
 # 세션 종류 이름 → 실행 함수
-SESSIONS: dict[str, Callable] = {"meal_log": meal_log.run, "view": view.run, "weight_log": weight_log.run}
+SESSIONS: dict[str, Callable] = {
+    "meal_log": meal_log.run, "view": view.run, "weight_log": weight_log.run,
+    "workout": workout.run,
+}
 
 OK, SKIPPED, FAILED, WITHDRAWN = "ok", "skipped", "failed", "withdrawn"
 
