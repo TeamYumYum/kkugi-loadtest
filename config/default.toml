@@ -185,3 +185,10 @@ duration_minutes_min = 30
 duration_minutes_max = 60
 # 업로드 전에 부위별 종목 목록을 둘러보는 비율
 browse_probability = 0.3
+# 루틴을 직접 만드는 회원 비율. 나머지는 루틴 없이 자유 운동을 기록한다. 서비스에 AI 추천 루틴이 아직 없다(MVP2)
+custom_routine_probability = 0.3
+# 근력 수준. 1.0은 운동을 막 시작한 성인 남성이다. 여성은 0.65배, 회원마다 0.8-1.2배 차이를 둔다(sessions/workout.py)
+strength = 0.6
+# 무게·횟수 종목의 목표 횟수. 가벼운 무게로 많이 한다
+reps_min = 10
+reps_max = 15

@@ -135,6 +135,17 @@ class _FakeServer:
                          "totalElements": len(items)}
         if (method, path) == ("GET", "/workout-sessions"):
             return 200, {"items": self.sessions}
+        if (method, path) == ("GET", "/workout-sessions/recent-sets"):
+            # 요청한 종목마다 가장 최근 기록의 종목 하나. 기록이 없는 종목은 빠진다
+            assert 1 <= len(params["exerciseIds"]) <= 50
+            items = []
+            for exercise_id in params["exerciseIds"]:
+                for saved in reversed(self.sessions):
+                    match = [e for e in saved.get("body", {}).get("performedExercises", []) if e["exerciseId"] == exercise_id]
+                    if match:
+                        items.append({"sessionId": saved["id"], "clientUuid": saved["clientUuid"], "exercise": match[0]})
+                        break
+            return 200, {"items": items}
         if (method, path) == ("POST", "/workout-sessions"):
             for saved in self.sessions:
                 if saved["clientUuid"] == body["clientUuid"]:
@@ -312,6 +323,7 @@ def test_setup_when_no_routines(tmp_path):
         "GET /workout-schedules",
         "POST /workout-schedules", "POST /workout-schedules", "POST /workout-schedules",
         "GET /workout-sessions",
+        "GET /workout-sessions/recent-sets",
         "POST /workout-sessions",
         "GET /weekly-workout-goal/me",
     ]
@@ -360,7 +372,8 @@ def test_no_setup_when_routines_exist(tmp_path):
     assert "POST /workout-schedules" not in names
     # 종목 이름을 채우려고 카탈로그는 받는다(프로세스에 사본이 없을 때)
     assert names == HOME_NAMES + ["GET /routines", "GET /workout-schedules", "GET /workout-sessions",
-                                  "[setup] GET /exercises", "POST /workout-sessions", "GET /weekly-workout-goal/me"]
+                                  "[setup] GET /exercises", "GET /workout-sessions/recent-sets", "POST /workout-sessions",
+                                  "GET /weekly-workout-goal/me"]
     # 오늘 일정이 없으니 연결하지 않는다
     assert outcome["schedule_id"] is None
     body = server.bodies[("POST", "/workout-sessions")][0]
@@ -447,8 +460,8 @@ def test_upload_links_todays_schedule_and_satisfies_server_rules(tmp_path):
     statuses = [s["status"] for e in body["performedExercises"] for s in e["sets"]]
     # 굴림값 0.05, 0.1이 SKIP_RATE보다 작다
     assert statuses == ["SKIPPED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "SKIPPED"]
-    assert outcome == {"session_id": server.sessions[0]["id"], "routine_id": 11, "schedule_id": 50, "sets": 7,
-                       "completed_sets": 5}
+    assert outcome == {"session_id": server.sessions[0]["id"], "routine_id": 11, "schedule_id": 50, "free": False,
+                       "sets": 7, "completed_sets": 5}
     times = [s["completedAt"] for e in body["performedExercises"] for s in e["sets"] if s["status"] == "COMPLETED"]
     assert times == sorted(times)
 
@@ -564,3 +577,117 @@ def test_fails_when_goal_not_configured(tmp_path):
 
     with pytest.raises(ValidationFailed, match="주간 운동 목표"):
         workout.run(_ctx(_api(tmp_path, server)), _inputs())
+
+
+# --- 자유 운동 ---
+
+
+def test_free_workout_when_member_does_not_make_routines(tmp_path):
+    server = _FakeServer(goal=None)
+
+    outcome = workout.run(_ctx(_api(tmp_path, server)), _inputs(custom_routine=False, free_seeds=(0.2, 0.7, 0.4)))
+
+    assert _names(server) == HOME_NAMES + [
+        "GET /routines", "GET /workout-schedules", "GET /workout-sessions",
+        "[setup] GET /exercises", "GET /workout-sessions/recent-sets", "POST /workout-sessions",
+        "GET /weekly-workout-goal/me", "[setup] PUT /weekly-workout-goal/me",
+    ]
+    assert server.routines == [] and server.schedules == []
+    assert server.goal == 3
+    body = server.bodies[("POST", "/workout-sessions")][0]
+    _check_upload(body, NOW, set(CATALOG_BY_ID))
+    assert "routineId" not in body and "routineName" not in body and "scheduleId" not in body
+    assert body["startExercises"] == []
+    performed = body["performedExercises"]
+    assert [CATALOG_BY_ID[e["exerciseId"]]["recordType"] for e in performed] == list(workout.FREE_SLOT_TYPES)
+    assert all("originStartOrder" not in e for e in performed)
+    sets = [s for e in performed for s in e["sets"]]
+    # 직접 더한 세트라 건너뛰지 않는다
+    assert all(s["status"] == "COMPLETED" and "originStartSetNo" not in s for s in sets)
+    assert outcome["free"] is True and outcome["routine_id"] is None and outcome["schedule_id"] is None
+    # 이전 기록은 오늘 할 종목으로 묻는다
+    asked = server.params[("GET", "/workout-sessions/recent-sets")][0]["exerciseIds"]
+    assert asked == sorted(e["exerciseId"] for e in performed)
+
+
+def test_free_workout_keeps_existing_goal(tmp_path):
+    server = _FakeServer(goal=2)
+
+    workout.run(_ctx(_api(tmp_path, server)), _inputs(custom_routine=False))
+
+    assert "[setup] PUT /weekly-workout-goal/me" not in _names(server)
+    assert server.goal == 2
+
+
+def test_free_workout_picks_differ_by_seeds(tmp_path):
+    first = workout.free_workout(CATALOG_BY_ID, _inputs(free_seeds=(0.1, 0.1, 0.1)))
+    second = workout.free_workout(CATALOG_BY_ID, _inputs(free_seeds=(0.9, 0.6, 0.9)))
+    assert [e["exerciseId"] for e in first["exercises"]] != [e["exerciseId"] for e in second["exercises"]]
+
+
+def test_recent_sets_returns_only_asked_exercises(tmp_path):
+    server = _FakeServer(routines=[_routine()])
+    api = _api(tmp_path, server)
+    workout.run(_ctx(api), _inputs())
+
+    def other_day(method, path, body, params):
+        if path == "/workout-sessions/recent-sets":
+            return 200, {"items": [{"sessionId": 1, "clientUuid": "x", "exercise": {"exerciseId": 999}}]}
+        return _FakeServer._handle(server, method, path, body, params)
+
+    server._handle = other_day
+    with pytest.raises(ValidationFailed, match="요청하지 않은 종목"):
+        workout.run(_ctx(api), _inputs(planned_at=PLANNED_AT + timedelta(days=1)))
+
+
+# --- 무게 모델 ---
+
+BARBELL_CHEST = {"weightType": "EXTERNAL", "equipment": "BARBELL", "bodyPart": "CHEST"}
+DUMBBELL_ARM = {"weightType": "EXTERNAL", "equipment": "DUMBBELL", "bodyPart": "ARM"}
+
+
+def test_weight_grows_with_body_weight_and_strength():
+    light = workout.target_weight(BARBELL_CHEST, 60, 1.0, 0.5)
+    heavy = workout.target_weight(BARBELL_CHEST, 90, 1.0, 0.5)
+    strong = workout.target_weight(BARBELL_CHEST, 60, 1.6, 0.5)
+    assert light < heavy and light < strong
+    # 60kg × 1.0 × 0.6 × 1.0 = 36kg → 2.5kg 단위
+    assert light == 35.0
+
+
+def test_weight_rounds_to_plate_and_respects_floors():
+    assert workout.target_weight(DUMBBELL_ARM, 70, 1.0, 0.5) % 1.0 == 0
+    # 바벨은 빈 봉보다 가볍지 않다
+    assert workout.target_weight(BARBELL_CHEST, 45, 0.3, 0.0) == workout.BARBELL_MIN_KG
+    # 근력이 낮으면 맨몸 추가 무게는 0이고, 보조 무게는 근력이 낮을수록 크다
+    assert workout.target_weight({"weightType": "ADDITIONAL"}, 70, 0.6, 0.5) == 0.0
+    weak = workout.target_weight({"weightType": "ASSISTANCE"}, 70, 0.5, 0.5)
+    fit = workout.target_weight({"weightType": "ASSISTANCE"}, 70, 1.4, 0.5)
+    assert weak > fit >= 5.0
+
+
+@pytest.mark.parametrize("weight_type", ["EXTERNAL", "ADDITIONAL", "ASSISTANCE"])
+@pytest.mark.parametrize("equipment", [*workout.EQUIPMENT_RATIO, None])
+def test_weight_is_within_server_range(weight_type, equipment):
+    for body_kg in (40, 70, 140, 300):
+        for strength in (0.3, 1.0, 2.0):
+            for seed in (0.0, 0.5, 0.999):
+                kg = workout.target_weight(
+                    {"weightType": weight_type, "equipment": equipment, "bodyPart": "LOWER_BODY"}, body_kg, strength, seed)
+                assert 0 <= kg <= 1000
+                assert Decimal(str(kg)).as_tuple().exponent >= -2
+
+
+def test_routine_targets_follow_member_body(tmp_path):
+    light, heavy = _FakeServer(goal=None), _FakeServer(goal=None)
+    workout.run(_ctx(_api_in(tmp_path, "a", light)), _inputs(body_weight_kg=55, strength=0.5, reps_range=(10, 15)))
+    workout.run(_ctx(_api_in(tmp_path, "b", heavy)), _inputs(body_weight_kg=95, strength=1.2, reps_range=(10, 15)))
+
+    def weights(server):
+        return [t["targetWeightKg"] for b in server.bodies[("POST", "/routines")] for e in b["exercises"]
+                for t in e["targets"] if CATALOG_BY_ID[e["exerciseId"]]["weightType"] == "EXTERNAL"]
+
+    assert weights(light) and sum(weights(light)) < sum(weights(heavy))
+    reps = [t["targetReps"] for b in light.bodies[("POST", "/routines")] for e in b["exercises"] for t in e["targets"]
+            if CATALOG_BY_ID[e["exerciseId"]]["recordType"] == "WEIGHT_REPS"]
+    assert all(10 <= r <= 15 for r in reps)

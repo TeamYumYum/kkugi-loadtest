@@ -18,7 +18,9 @@ from kkugi_load.personas.base import BodyProfile, Persona, PlannedSession, open_
 from kkugi_load.sessions.meal_log import MealInputs
 from kkugi_load.sessions.view import ViewInputs
 from kkugi_load.sessions.weight_log import WeightInputs, drifted_weight
-from kkugi_load.sessions.workout import BODY_PARTS, EXERCISES_PER_ROUTINE, SETS_PER_EXERCISE, WorkoutInputs
+from kkugi_load.sessions.workout import (
+    BODY_PARTS, EXERCISES_PER_ROUTINE, FEMALE_STRENGTH, FREE_SLOT_TYPES, SETS_PER_EXERCISE, WorkoutInputs,
+)
 
 
 @dataclass(frozen=True)
@@ -96,30 +98,40 @@ class Dieter(Persona):
     def _plan_workout(self, config: Config, account: Account, day: date, at: datetime) -> PlannedSession | None:
         """운동 창의 첫 조회 세션을 운동 기록으로 할지 정한다. 기록하지 않으면 None.
 
-        주간 목표와 루틴 값은 계정마다 고정이다. 준비가 실패해 다른 날 다시 해도 같은 목표와 루틴을 만든다.
+        주간 목표, 루틴 값, 루틴을 직접 만드는지, 근력은 계정마다 고정이다. 준비가 실패해 다른 날 다시 해도 같은
+        목표와 루틴을 만든다. 근력 = 페르소나 strength × 성별 배수 × 개인차(0.8-1.2)다.
         """
         workout = config.personas[self.name]["workout"]
         slots = int(workout["routines_max"]) * EXERCISES_PER_ROUTINE
-        # 계정 고정 값: 주간 목표 1개, 루틴 수 1개, 그 뒤로 루틴 종목 칸마다 하나씩
-        fixed = seeded_uniforms(config.seed, "workout_plan", account.index, count=2 + slots)
+        # 계정 고정 값: 주간 목표 1개, 루틴 수 1개, 루틴 종목 칸마다 하나씩, 마지막에 루틴 직접 만들기·개인차 하나씩.
+        # 뒤의 두 값을 나중에 붙였으므로 앞의 값은 그대로다
+        fixed = seeded_uniforms(config.seed, "workout_plan", account.index, count=4 + slots)
         low, high = int(workout["weekly_target_min"]), int(workout["weekly_target_max"])
         target = low + int(fixed[0] * (high - low + 1))
-        # 날짜 값: 기록 여부, 운동 시간, 둘러보기 여부, 부위, 루틴 고르기 각 1개, 그 뒤로 세트마다 하나씩
+        # 날짜 값: 기록 여부, 운동 시간, 둘러보기 여부, 부위, 루틴 고르기 각 1개, 세트마다 하나씩, 자유 운동 종목 칸마다 하나씩
         sets = EXERCISES_PER_ROUTINE * SETS_PER_EXERCISE
-        u = seeded_uniforms(config.seed, "workout", account.index, day.isoformat(), count=5 + sets)
+        u = seeded_uniforms(config.seed, "workout", account.index, day.isoformat(), count=5 + sets + len(FREE_SLOT_TYPES))
         if u[0] >= target / 7:
             return None
         minutes_min, minutes_max = int(workout["duration_minutes_min"]), int(workout["duration_minutes_max"])
         browse = u[2] < float(workout["browse_probability"])
+        body = account.profile.body
+        gender = FEMALE_STRENGTH if body.gender == "FEMALE" else 1.0
+        strength = float(workout["strength"]) * gender * (0.8 + 0.4 * fixed[3 + slots])
         inputs = WorkoutInputs(
             planned_at=at,
             weekly_target=target,
             routine_count=1 + int(fixed[1] * int(workout["routines_max"])),
-            routine_seeds=fixed[2:],
+            routine_seeds=fixed[2:2 + slots],
             routine_pick=int(u[4] * 1000),
             browse_body_part=BODY_PARTS[int(u[3] * len(BODY_PARTS))] if browse else None,
             duration_minutes=minutes_min + int(u[1] * (minutes_max - minutes_min + 1)),
-            set_rolls=u[5:],
+            set_rolls=u[5:5 + sets],
+            custom_routine=fixed[2 + slots] < float(workout["custom_routine_probability"]),
+            body_weight_kg=body.weight_kg,
+            strength=strength,
+            reps_range=(int(workout["reps_min"]), int(workout["reps_max"])),
+            free_seeds=u[5 + sets:],
         )
         return PlannedSession(account.index, "dieter_workout", at, "workout", inputs)
 

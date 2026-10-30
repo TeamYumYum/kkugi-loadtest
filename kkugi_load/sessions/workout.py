@@ -1,15 +1,23 @@
 """운동 기록 세션. 앱을 열고, 루틴과 이번 주 일정을 받고, 끝난 운동 하나를 올리고, 주간 목표를 확인한다.
 
+루틴은 회원이 직접 만드는 방법(POST /routines)밖에 없다. AI 추천 루틴은 서비스의 MVP2 범위라 아직 없다. 그래서
+루틴을 직접 만드는 회원(custom_routine)만 루틴을 만들어 그대로 수행하고, 나머지는 루틴 없이 그날 고른 종목으로
+자유 운동을 기록한다. 무게와 횟수는 회원의 몸무게와 근력으로 정한다(target_weight).
+
 요청 순서:
 1. 요약, 목표, 성장(홈 화면)
 2. 루틴 목록(GET /routines)
-   - 비어 있으면 준비: 종목 목록(프로세스에 없을 때만, 페이지 수만큼), 주간 목표 정하기, 루틴 만들기(1-2개)
+   - 비어 있고 루틴을 직접 만드는 회원이면 준비: 종목 목록(프로세스에 없을 때만, 페이지 수만큼), 주간 목표 정하기,
+     루틴 만들기(1-2개)
+   - 비어 있고 루틴을 만들지 않는 회원이면 자유 운동이다
 3. 이번 주 일정(GET /workout-schedules, 오늘부터 6일 뒤까지)
-   - 비어 있으면 주간 목표 횟수만큼 일정 예약(POST /workout-schedules)
+   - 루틴이 있고 일정이 비어 있으면 주간 목표 횟수만큼 일정 예약(POST /workout-schedules)
 4. 종목 둘러보기(GET /exercises?bodyPart=..). 입력에 부위가 있을 때만
 5. 최근 7일 운동 기록(GET /workout-sessions). 이 세션의 기록이 이미 있으면 SessionSkipped
-6. 운동 기록 업로드(POST /workout-sessions). 오늘 미완료 일정이 있으면 그 일정에 연결한다
-7. 주간 목표(GET /weekly-workout-goal/me)
+6. 종목별 이전 기록(GET /workout-sessions/recent-sets). 앱이 세트를 기록하는 동안 보여 주는 이전 기록이다
+7. 운동 기록 업로드(POST /workout-sessions). 오늘 미완료 일정이 있으면 그 일정에 연결한다
+8. 주간 목표(GET /weekly-workout-goal/me)
+   - 자유 운동 회원은 목표가 없으면 이때 정한다(PUT /weekly-workout-goal/me, 준비 요청)
 
 준비 단계의 요청은 통계 이름 앞에 [setup]을 붙인다. 주간 목표를 루틴보다 먼저 정한다. 준비를 다시 하는 조건이
 "루틴 목록이 비었다" 하나뿐이라, 루틴을 만든 뒤 목표 요청이 실패하면 목표가 영영 정해지지 않기 때문이다. 목표
@@ -52,6 +60,23 @@ BROWSE_PAGE_SIZE = 20
 WINDOW_DAYS = 7
 # 종목 둘러보기에 쓰는 부위. 서버의 bodyPart 값이다
 BODY_PARTS = ("LOWER_BODY", "BACK", "CHEST", "SHOULDER", "ARM", "CORE")
+# 자유 운동의 종목 칸. 무게·횟수 종목 둘과 횟수 종목 하나다
+FREE_SLOT_TYPES = ("WEIGHT_REPS", "WEIGHT_REPS", "REPS")
+
+# --- 무게 모델 ---
+# 일반 중량(EXTERNAL) 목표 = 몸무게 × 근력 × 장비 비율 × 부위 비율 × (0.9-1.1). 근력 1.0은 운동을 막 시작한 성인
+# 남성이다. 덤벨은 한 손 무게다. 비율은 모두 가정이다
+EQUIPMENT_RATIO = {
+    "BARBELL": 0.6, "SMITH_MACHINE": 0.5, "MACHINE": 0.6, "CABLE": 0.35, "DUMBBELL": 0.15, "PLATE": 0.2,
+    "BODYWEIGHT": 0.1,
+}
+# 카탈로그에 장비가 없거나 모르는 값일 때
+DEFAULT_EQUIPMENT_RATIO = 0.3
+BODY_PART_RATIO = {"LOWER_BODY": 1.4, "BACK": 1.0, "CHEST": 1.0, "SHOULDER": 0.6, "ARM": 0.4, "CORE": 0.5}
+# 여성의 근력 배수(가정). 페르소나가 회원 근력을 정할 때 곱한다
+FEMALE_STRENGTH = 0.65
+# 바벨은 빈 봉 무게보다 가벼울 수 없다
+BARBELL_MIN_KG = 20.0
 
 # 종목 ID → 종목. 프로세스 하나가 한 번 채우고 모든 계정이 함께 쓴다. 폰도 카탈로그 사본을 두고 쓰므로
 # 세션마다 다시 받지 않는다. 서버는 제공 중인 종목만 돌려주므로, 루틴에 있는데 여기 없는 종목은 내려간 종목이다
@@ -70,6 +95,11 @@ class WorkoutInputs:
     browse_body_part: 종목 둘러보기 부위(LOWER_BODY, BACK, CHEST, SHOULDER, ARM, CORE). None이면 둘러보지 않는다
     duration_minutes: 운동 시간(분). startedAt = endedAt - 이 시간
     set_rolls: 세트마다 쓰는 0 이상 1 미만의 값. 건너뛸지와 실제값의 흔들림을 정한다. 모자라면 돌려 쓴다
+    custom_routine: 루틴이 없을 때 직접 만드는지. False면 루틴 없이 자유 운동을 기록한다
+    body_weight_kg: 무게 목표의 기준 몸무게
+    strength: 회원의 근력 배수. 페르소나 수준, 성별, 개인차를 곱한 값이다
+    reps_range: 무게·횟수 종목의 목표 횟수 범위(이상, 이하). 횟수만 세는 종목은 여기에 5를 더한다
+    free_seeds: 자유 운동 종목 칸마다 쓰는 0 이상 1 미만의 값. 날마다 다른 종목을 고른다
     """
 
     planned_at: datetime
@@ -80,6 +110,11 @@ class WorkoutInputs:
     browse_body_part: str | None
     duration_minutes: int
     set_rolls: tuple[float, ...]
+    custom_routine: bool = True
+    body_weight_kg: float = 70.0
+    strength: float = 1.0
+    reps_range: tuple[int, int] = (8, 12)
+    free_seeds: tuple[float, ...] = ()
 
 
 def workout_uuid(email: str, day: date) -> str:
@@ -123,28 +158,50 @@ def _cycled(values: tuple[float, ...], index: int, default: float = 0.5) -> floa
     return values[index % len(values)] if values else default
 
 
-def _target(exercise: dict, seed: float) -> dict:
+def target_weight(exercise: dict, body_weight_kg: float, strength: float, seed: float) -> float:
+    """무게·횟수 종목의 목표 무게(kg). 무게의 뜻은 weightType마다 다르다.
+
+    일반(EXTERNAL)은 드는 무게, 추가(ADDITIONAL)는 몸무게에 더하는 무게, 보조(ASSISTANCE)는 덜어 주는 무게다.
+    근력이 낮으면 추가 무게는 0이고 보조 무게는 크다. 원판 단위로 반올림한다(덤벨 1kg, 보조 5kg, 그 밖 2.5kg).
+    """
+    weight_type = exercise.get("weightType")
+    jitter = 0.9 + 0.2 * seed
+    if weight_type == "ADDITIONAL":
+        step, low = 2.5, 0.0
+        raw = body_weight_kg * max(0.0, strength - 1.0) * 0.3 * jitter
+    elif weight_type == "ASSISTANCE":
+        step, low = 5.0, 5.0
+        raw = body_weight_kg * min(0.8, max(0.1, 1.0 - 0.5 * strength)) * jitter
+    else:
+        equipment = exercise.get("equipment")
+        step = 1.0 if equipment == "DUMBBELL" else 2.5
+        low = BARBELL_MIN_KG if equipment == "BARBELL" else step
+        ratio = EQUIPMENT_RATIO.get(equipment, DEFAULT_EQUIPMENT_RATIO) * BODY_PART_RATIO.get(exercise.get("bodyPart"), 1.0)
+        raw = body_weight_kg * strength * ratio * jitter
+    return float(min(1000.0, max(low, round(raw / step) * step)))
+
+
+def _target(exercise: dict, inputs: WorkoutInputs, seed: float) -> dict:
     """종목의 기록 방식에 맞는 세트 목표. 방식에 없는 값은 null이어야 서버가 받는다."""
     record_type = exercise["recordType"]
     if record_type == "DURATION":
-        return {"targetWeightKg": None, "targetReps": None, "targetDurationSeconds": 30 + 15 * int(seed * 5)}
-    reps = 8 + int(seed * 5) if record_type == "WEIGHT_REPS" else 10 + 2 * int(seed * 6)
+        return {"targetWeightKg": None, "targetReps": None, "targetDurationSeconds": 30 + 15 * int(seed * 3)}
+    low, high = inputs.reps_range
+    reps = low + int(seed * (high - low + 1))
     if record_type != "WEIGHT_REPS":
-        return {"targetWeightKg": None, "targetReps": reps, "targetDurationSeconds": None}
-    # 무게의 뜻은 weightType마다 다르다. 일반은 원판 무게, 추가는 몸무게에 더하는 무게, 보조는 덜어 주는 무게다
-    base, steps_, step = {"ADDITIONAL": (0.0, 5, 2.5), "ASSISTANCE": (10.0, 5, 5.0)}.get(
-        exercise.get("weightType"), (20.0, 17, 2.5),
-    )
-    return {"targetWeightKg": base + step * int(seed * steps_), "targetReps": reps, "targetDurationSeconds": None}
+        return {"targetWeightKg": None, "targetReps": reps + 5, "targetDurationSeconds": None}
+    weight = target_weight(exercise, inputs.body_weight_kg, inputs.strength, seed)
+    return {"targetWeightKg": weight, "targetReps": reps, "targetDurationSeconds": None}
 
 
-def _routine_body(catalog: dict[int, dict], order: int, seeds: tuple[float, ...]) -> dict:
-    """order번째 루틴의 생성 본문. 종목은 기록 방식별 후보(ID 순)에서 seeds로 고르고 루틴 안에서 겹치지 않게 한다."""
+def _pick_exercises(
+    catalog: dict[int, dict], slot_types: tuple[str, ...], seeds: tuple[float, ...], offset: int,
+) -> list[dict]:
+    """칸마다 그 기록 방식의 종목(ID 순)에서 seeds로 하나씩 고른다. 같은 종목은 두 번 고르지 않는다."""
     by_id = sorted(catalog.values(), key=lambda e: e["id"])
-    slot_types = _SLOT_TYPES + (_LAST_SLOT_TYPES[order % len(_LAST_SLOT_TYPES)],)
     chosen: list[dict] = []
     for slot, record_type in enumerate(slot_types):
-        seed = _cycled(seeds, order * EXERCISES_PER_ROUTINE + slot)
+        seed = _cycled(seeds, offset + slot)
         # 그 방식의 종목이 없으면 전체에서 고른다
         pool = [e for e in by_id if e["recordType"] == record_type] or by_id
         start = int(seed * len(pool))
@@ -153,15 +210,39 @@ def _routine_body(catalog: dict[int, dict], order: int, seeds: tuple[float, ...]
             if all(candidate["id"] != c["id"] for c in chosen):
                 chosen.append(candidate)
                 break
+    return chosen
+
+
+def _routine_body(catalog: dict[int, dict], order: int, inputs: WorkoutInputs) -> dict:
+    """order번째 루틴의 생성 본문. 루틴의 목표는 이 회원의 몸무게와 근력으로 정한다."""
+    seeds = inputs.routine_seeds
+    offset = order * EXERCISES_PER_ROUTINE
+    chosen = _pick_exercises(catalog, _SLOT_TYPES + (_LAST_SLOT_TYPES[order % len(_LAST_SLOT_TYPES)],), seeds, offset)
     return {
         "name": f"꾸기 루틴 {order + 1}",
         "exercises": [
             {
                 "exerciseId": exercise["id"],
                 "restSeconds": REST_SECONDS,
-                "targets": [_target(exercise, _cycled(seeds, order * EXERCISES_PER_ROUTINE + slot))] * SETS_PER_EXERCISE,
+                "targets": [_target(exercise, inputs, _cycled(seeds, offset + slot))] * SETS_PER_EXERCISE,
             }
             for slot, exercise in enumerate(chosen)
+        ],
+    }
+
+
+def free_workout(catalog: dict[int, dict], inputs: WorkoutInputs) -> dict:
+    """자유 운동 구성. 루틴 응답과 같은 모양으로 만들어 업로드 본문 만들기를 함께 쓴다. id와 이름은 None이다."""
+    chosen = _pick_exercises(catalog, FREE_SLOT_TYPES, inputs.free_seeds, 0)
+    return {
+        "id": None, "name": None,
+        "exercises": [
+            {
+                "exerciseId": exercise["id"], "sortOrder": order, "restSeconds": REST_SECONDS,
+                "recordType": exercise["recordType"], "weightType": exercise["weightType"],
+                "targets": [_target(exercise, inputs, _cycled(inputs.free_seeds, order - 1))] * SETS_PER_EXERCISE,
+            }
+            for order, exercise in enumerate(chosen, start=1)
         ],
     }
 
@@ -177,7 +258,7 @@ def _setup(api: KkugiApi, inputs: WorkoutInputs) -> list[dict]:
     for order in range(max(1, inputs.routine_count)):
         routines.append(api.call(
             "POST", "/routines", name=f"{steps.SETUP}POST /routines",
-            json_body=_routine_body(catalog, order, inputs.routine_seeds), expect=Expect(ok=(201,)),
+            json_body=_routine_body(catalog, order, inputs), expect=Expect(ok=(201,)),
         ).data)
     return routines
 
@@ -235,7 +316,12 @@ def build_upload(
     inputs: WorkoutInputs, client_uuid: str, routine: dict, schedule: dict | None, catalog: dict[int, dict],
     ended_at: datetime,
 ) -> dict:
-    """루틴과 입력으로 업로드 본문을 만든다. 같은 인자면 늘 같은 본문이다."""
+    """루틴과 입력으로 업로드 본문을 만든다. 같은 인자면 늘 같은 본문이다.
+
+    routine의 id가 None이면 자유 운동(free_workout)이다. 시작 구성이 없으므로 시작 종목·세트 대응을 보내지 않고,
+    직접 더한 세트라 건너뛰지 않는다.
+    """
+    free = routine["id"] is None
     started_at = ended_at - timedelta(minutes=inputs.duration_minutes)
     exercises = sorted(routine["exercises"], key=lambda e: e["sortOrder"])
     total_sets = sum(len(e["targets"]) for e in exercises)
@@ -260,20 +346,24 @@ def build_upload(
             values = _values(target)
             start_sets.append({"setNo": set_no, "target": values, "status": "PENDING"})
             roll = _cycled(inputs.set_rolls, position)
-            done = {"setNo": set_no, "originStartSetNo": set_no, "target": values}
-            if roll < SKIP_RATE:
+            done = {"setNo": set_no, "target": values} | ({} if free else {"originStartSetNo": set_no})
+            if not free and roll < SKIP_RATE:
                 done["status"] = "SKIPPED"
             else:
+                spread = roll if free else (roll - SKIP_RATE) / (1 - SKIP_RATE)
                 # 세트 완료 시각은 운동 시간 안에 세트 순서대로 고르게 둔다
                 done |= {
                     "status": "COMPLETED",
-                    "actual": _actual(exercise["recordType"], values, (roll - SKIP_RATE) / (1 - SKIP_RATE)),
+                    "actual": _actual(exercise["recordType"], values, spread),
                     "completedAt": (started_at + timedelta(seconds=span * (position + 1) // (total_sets + 1))).isoformat(),
                 }
             done_sets.append(done)
             position += 1
-        start_exercises.append(head | {"sets": start_sets})
-        performed.append(head | {"originStartOrder": order, "sets": done_sets})
+        if free:
+            performed.append(head | {"sets": done_sets})
+        else:
+            start_exercises.append(head | {"sets": start_sets})
+            performed.append(head | {"originStartOrder": order, "sets": done_sets})
 
     # 서버는 완료 세트가 하나도 없는 기록을 받지 않는다. 모두 건너뛰었으면 첫 세트를 완료로 바꾼다
     if not any(s["status"] == "COMPLETED" for e in performed for s in e["sets"]):
@@ -287,13 +377,14 @@ def build_upload(
 
     body = {
         "clientUuid": client_uuid,
-        "routineId": routine["id"],
-        "routineName": routine["name"],
         "startedAt": started_at.isoformat(),
         "endedAt": ended_at.isoformat(),
         "startExercises": start_exercises,
         "performedExercises": performed,
     }
+    if not free:
+        body["routineId"] = routine["id"]
+        body["routineName"] = routine["name"]
     if schedule is not None:
         body["scheduleId"] = schedule["id"]
         body["scheduledDate"] = schedule["scheduledDate"]
@@ -322,7 +413,7 @@ def run(ctx: SessionContext, inputs: WorkoutInputs) -> dict:
     # 앱을 열면 화면이 자동으로 부르는 조회. 사이에 생각 시간을 두지 않는다
     steps.open_home(api, day.isoformat())
     routines = api.call("GET", "/routines", name="GET /routines").data["items"]
-    if not routines:
+    if not routines and inputs.custom_routine:
         routines = _setup(api, inputs)
     routines = sorted(routines, key=lambda r: r["id"])
     routines_by_id = {r["id"]: r for r in routines}
@@ -332,7 +423,8 @@ def run(ctx: SessionContext, inputs: WorkoutInputs) -> dict:
         "GET", "/workout-schedules", name="GET /workout-schedules",
         params={"from": day.isoformat(), "to": week_end.isoformat()},
     ).data["items"]
-    if not schedules:
+    # 일정은 루틴을 예약하는 것이라 루틴이 없으면 만들 수 없다
+    if not schedules and routines:
         schedules = _schedule_week(ctx, inputs, day, routines)
 
     if inputs.browse_body_part:
@@ -350,11 +442,28 @@ def run(ctx: SessionContext, inputs: WorkoutInputs) -> dict:
     if any(item.get("clientUuid") == client_uuid for item in recent):
         raise SessionSkipped("오늘 운동을 이미 기록함")
 
+    catalog = _load_catalog(api)
     schedule = _todays_open_schedule(schedules, day, routines_by_id)
-    routine = routines_by_id[schedule["routineId"]] if schedule else routines[inputs.routine_pick % len(routines)]
+    if not routines:
+        routine = free_workout(catalog, inputs)
+    elif schedule:
+        routine = routines_by_id[schedule["routineId"]]
+    else:
+        routine = routines[inputs.routine_pick % len(routines)]
+
+    # 세트를 기록하는 화면이 종목마다 이전 기록을 보여 준다
+    exercise_ids = sorted({e["exerciseId"] for e in routine["exercises"]})
+    previous = api.call(
+        "GET", "/workout-sessions/recent-sets", name="GET /workout-sessions/recent-sets",
+        params={"exerciseIds": exercise_ids},
+    ).data["items"]
+    unknown = {item["exercise"]["exerciseId"] for item in previous} - set(exercise_ids)
+    if unknown:
+        raise ValidationFailed(f"이전 기록에 요청하지 않은 종목 {sorted(unknown)}")
+
     # 재실행해도 같은 본문이 나오도록 계획 시각을 쓰고 초 아래는 버린다. 서버 현재 시각을 넘지 않게 지금으로 당긴다
     ended_at = min(inputs.planned_at, ctx.now()).replace(microsecond=0)
-    body = build_upload(inputs, client_uuid, routine, schedule, _load_catalog(api), ended_at)
+    body = build_upload(inputs, client_uuid, routine, schedule, catalog, ended_at)
 
     # 200은 같은 clientUuid와 같은 내용을 다시 보낸 경우다(응답이 유실되어 재실행했을 때)
     saved = api.call(
@@ -365,13 +474,21 @@ def run(ctx: SessionContext, inputs: WorkoutInputs) -> dict:
 
     goal = api.call("GET", "/weekly-workout-goal/me", name="GET /weekly-workout-goal/me").data
     if not goal.get("configured"):
-        raise ValidationFailed("주간 운동 목표가 정해지지 않음")
+        if routines:
+            raise ValidationFailed("주간 운동 목표가 정해지지 않음")
+        # 자유 운동 회원은 루틴 준비를 거치지 않으므로 목표를 처음 볼 때 정한다
+        ctx.think(ctx.config.select_think)
+        api.call(
+            "PUT", "/weekly-workout-goal/me", name=f"{steps.SETUP}PUT /weekly-workout-goal/me",
+            json_body={"targetCount": inputs.weekly_target},
+        )
 
     sets = [s for e in body["performedExercises"] for s in e["sets"]]
     return {
         "session_id": saved.get("id"),
         "routine_id": routine["id"],
         "schedule_id": schedule["id"] if schedule else None,
+        "free": not routines,
         "sets": len(sets),
         "completed_sets": sum(s["status"] == "COMPLETED" for s in sets),
     }
