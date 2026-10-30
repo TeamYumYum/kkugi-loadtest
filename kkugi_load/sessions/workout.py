@@ -4,6 +4,11 @@
 루틴을 직접 만드는 회원(custom_routine)만 루틴을 만들어 그대로 수행하고, 나머지는 루틴 없이 그날 고른 종목으로
 자유 운동을 기록한다. 무게와 횟수는 회원의 몸무게와 근력으로 정한다(target_weight).
 
+종목은 회원마다 다르다. 회원은 부위마다 3-4개씩 자주 하는 종목을 갖고(member_pool), 루틴과 자유 운동은 그 안에서
+고른다. 루틴은 루틴마다 부위 2개를 맡고, 자유 운동은 그날 고른 부위 2개(day_parts)에서 2개씩 한다. 극히 일부는
+하고 싶은 종목을 검색해도 찾지 못하고(missing_keyword), 그 부위 목록을 둘러본 뒤 대신할 종목을 운동 중에 더한다.
+서비스에 회원이 종목을 직접 만드는 기능은 없다.
+
 요청 순서:
 1. 요약, 목표, 성장(홈 화면)
 2. 루틴 목록(GET /routines)
@@ -14,6 +19,7 @@
    - 루틴이 있고 일정이 비어 있으면 주간 목표 횟수만큼 일정 예약(POST /workout-schedules)
 4. 종목 둘러보기(GET /exercises?bodyPart=..). 입력에 부위가 있을 때만
 5. 최근 7일 운동 기록(GET /workout-sessions). 이 세션의 기록이 이미 있으면 SessionSkipped
+   - 못 찾는 검색이면 종목 검색(GET /exercises?keyword=..)과 그 부위 둘러보기(GET /exercises?bodyPart=..)
 6. 종목별 이전 기록(GET /workout-sessions/recent-sets). 앱이 세트를 기록하는 동안 보여 주는 이전 기록이다
 7. 운동 기록 업로드(POST /workout-sessions). 오늘 미완료 일정이 있으면 그 일정에 연결한다
 8. 주간 목표(GET /weekly-workout-goal/me)
@@ -43,12 +49,14 @@ from kkugi_load.sessions.base import SessionContext, SessionSkipped, ValidationF
 # 운동 clientUuid를 만드는 이름공간. 바꾸면 이미 올린 운동과 UUID가 달라져 같은 날 두 번 올린다
 WORKOUT_UUID_NAMESPACE = uuid.UUID("3d9b7e41-2a6c-4f58-8e1d-5c0a9b4f7e23")
 
-# 루틴 하나의 종목 수와 종목마다 세트 수
-EXERCISES_PER_ROUTINE = 4
+# 루틴과 자유 운동은 부위 2개에서 2종목씩 한다. 종목마다 세트 수
+PARTS_PER_WORKOUT = 2
+EXERCISES_PER_PART = 2
+EXERCISES_PER_ROUTINE = PARTS_PER_WORKOUT * EXERCISES_PER_PART
 SETS_PER_EXERCISE = 3
-# 루틴의 종목 칸. 앞 세 칸은 무게·횟수 종목이고 마지막 칸은 루틴 순번에 따라 횟수 또는 시간 종목이다
-_SLOT_TYPES = ("WEIGHT_REPS", "WEIGHT_REPS", "WEIGHT_REPS")
-_LAST_SLOT_TYPES = ("REPS", "DURATION")
+# 회원이 부위마다 갖는 종목 수의 범위. 풀을 정하는 값은 부위마다 크기 1개와 고르기 POOL_MAX개다
+POOL_MIN, POOL_MAX = 3, 4
+POOL_SEEDS_PER_PART = 1 + POOL_MAX
 REST_SECONDS = 90
 # 세트 굴림값이 이보다 작으면 그 세트를 건너뛴다(가정)
 SKIP_RATE = 0.15
@@ -58,10 +66,14 @@ CATALOG_PAGE_SIZE = 100
 BROWSE_PAGE_SIZE = 20
 # 일정 목록과 기록 목록을 보는 기간(오늘 포함 7일)
 WINDOW_DAYS = 7
-# 종목 둘러보기에 쓰는 부위. 서버의 bodyPart 값이다
+# 서버의 bodyPart 값이다
 BODY_PARTS = ("LOWER_BODY", "BACK", "CHEST", "SHOULDER", "ARM", "CORE")
-# 자유 운동의 종목 칸. 무게·횟수 종목 둘과 횟수 종목 하나다
-FREE_SLOT_TYPES = ("WEIGHT_REPS", "WEIGHT_REPS", "REPS")
+# 카탈로그에 없는 종목 검색어와, 찾지 못했을 때 대신 둘러볼 부위. 2026-10-30 seed(R__workout_exercise_seed.sql)의
+# 한국어·영어 이름에 들어 있지 않음을 확인했다
+MISSING_EXERCISES = {
+    "케틀벨 스윙": "LOWER_BODY", "배틀 로프": "SHOULDER", "로잉 머신": "BACK", "줄넘기": "LOWER_BODY",
+    "클라이밍": "BACK", "필라테스": "CORE",
+}
 
 # --- 무게 모델 ---
 # 일반 중량(EXTERNAL) 목표 = 몸무게 × 근력 × 장비 비율 × 부위 비율 × (0.9-1.1). 근력 1.0은 운동을 막 시작한 성인
@@ -90,7 +102,7 @@ class WorkoutInputs:
     planned_at: 운동을 마친 시각(세션을 여는 시각). 업로드의 endedAt이 된다
     weekly_target: 주간 목표 횟수(1-7). 처음 목표를 정할 때와 일정 예약 수에 쓴다
     routine_count: 처음 만들 루틴 수(1-2). 루틴이 이미 있으면 쓰지 않는다
-    routine_seeds: 루틴을 만들 때 종목 칸마다 쓰는 0 이상 1 미만의 값. routine_count × 4개를 권한다. 모자라면 돌려 쓴다
+    routine_seeds: 루틴을 만들 때 쓰는 0 이상 1 미만의 값. 앞에서부터 루틴마다 맡을 부위를 고른다. 모자라면 돌려 쓴다
     routine_pick: 오늘 일정이 없을 때 고를 루틴의 순번 기준값. 루틴 수로 나눈 나머지를 쓴다
     browse_body_part: 종목 둘러보기 부위(LOWER_BODY, BACK, CHEST, SHOULDER, ARM, CORE). None이면 둘러보지 않는다
     duration_minutes: 운동 시간(분). startedAt = endedAt - 이 시간
@@ -99,7 +111,11 @@ class WorkoutInputs:
     body_weight_kg: 무게 목표의 기준 몸무게
     strength: 회원의 근력 배수. 페르소나 수준, 성별, 개인차를 곱한 값이다
     reps_range: 무게·횟수 종목의 목표 횟수 범위(이상, 이하). 횟수만 세는 종목은 여기에 5를 더한다
-    free_seeds: 자유 운동 종목 칸마다 쓰는 0 이상 1 미만의 값. 날마다 다른 종목을 고른다
+    free_seeds: 자유 운동에서 부위마다 풀의 종목을 고르는 0 이상 1 미만의 값. 날마다 다르다
+    pool_seeds: 회원의 종목 풀을 정하는 0 이상 1 미만의 값. 부위마다 POOL_SEEDS_PER_PART개. 계정마다 고정이다
+    day_parts: 자유 운동에서 오늘 하는 부위. 비어 있으면 BODY_PARTS의 앞 PARTS_PER_WORKOUT개다
+    missing_keyword: 찾지 못할 종목 검색어(MISSING_EXERCISES의 키). None이면 검색하지 않는다
+    missing_seed: 찾지 못했을 때 그 부위에서 대신할 종목을 고르는 0 이상 1 미만의 값
     """
 
     planned_at: datetime
@@ -115,6 +131,10 @@ class WorkoutInputs:
     strength: float = 1.0
     reps_range: tuple[int, int] = (8, 12)
     free_seeds: tuple[float, ...] = ()
+    pool_seeds: tuple[float, ...] = ()
+    day_parts: tuple[str, ...] = ()
+    missing_keyword: str | None = None
+    missing_seed: float = 0.5
 
 
 def workout_uuid(email: str, day: date) -> str:
@@ -194,57 +214,94 @@ def _target(exercise: dict, inputs: WorkoutInputs, seed: float) -> dict:
     return {"targetWeightKg": weight, "targetReps": reps, "targetDurationSeconds": None}
 
 
-def _pick_exercises(
-    catalog: dict[int, dict], slot_types: tuple[str, ...], seeds: tuple[float, ...], offset: int,
-) -> list[dict]:
-    """칸마다 그 기록 방식의 종목(ID 순)에서 seeds로 하나씩 고른다. 같은 종목은 두 번 고르지 않는다."""
-    by_id = sorted(catalog.values(), key=lambda e: e["id"])
-    chosen: list[dict] = []
-    for slot, record_type in enumerate(slot_types):
-        seed = _cycled(seeds, offset + slot)
-        # 그 방식의 종목이 없으면 전체에서 고른다
-        pool = [e for e in by_id if e["recordType"] == record_type] or by_id
-        start = int(seed * len(pool))
-        for step in range(len(pool)):
-            candidate = pool[(start + step) % len(pool)]
-            if all(candidate["id"] != c["id"] for c in chosen):
-                chosen.append(candidate)
-                break
+def _shuffled(items: list, seeds: tuple[float, ...], count: int) -> list:
+    """items에서 겹치지 않게 count개를 고른다. 앞에서부터 섞는 Fisher-Yates를 고를 만큼만 한다."""
+    items = list(items)
+    count = min(count, len(items))
+    for i in range(count):
+        j = i + int(_cycled(seeds, i) * (len(items) - i))
+        items[i], items[j] = items[j], items[i]
+    return items[:count]
+
+
+def member_pool(catalog: dict[int, dict], pool_seeds: tuple[float, ...]) -> dict[str, list[dict]]:
+    """회원이 부위마다 자주 하는 종목 3-4개. 부위 → 종목 목록이다. 그 부위의 종목(ID 순)에서 고른다.
+
+    카탈로그가 같으면 같은 풀이 나온다. 종목이 내려가 카탈로그가 바뀌면 그 부위의 풀은 바뀔 수 있다.
+    """
+    pool = {}
+    for i, part in enumerate(BODY_PARTS):
+        seeds = pool_seeds[i * POOL_SEEDS_PER_PART:(i + 1) * POOL_SEEDS_PER_PART]
+        size = POOL_MIN + int(_cycled(seeds, 0) * (POOL_MAX - POOL_MIN + 1))
+        candidates = sorted((e for e in catalog.values() if e.get("bodyPart") == part), key=lambda e: e["id"])
+        pool[part] = _shuffled(candidates, seeds[1:], size)
+    return pool
+
+
+def _pick_from_pool(pool: dict[str, list[dict]], parts: tuple[str, ...], seeds: tuple[float, ...]) -> list[dict]:
+    """parts마다 풀에서 EXERCISES_PER_PART개씩 고른다. 그 부위들의 풀이 비면 풀 전체에서 고른다."""
+    chosen = []
+    for i, part in enumerate(parts):
+        part_seeds = seeds[i * EXERCISES_PER_PART:(i + 1) * EXERCISES_PER_PART]
+        chosen += _shuffled(pool.get(part, []), part_seeds, EXERCISES_PER_PART)
+    if not chosen:
+        chosen = [e for part in BODY_PARTS for e in pool.get(part, [])][:EXERCISES_PER_ROUTINE]
     return chosen
 
 
+def routine_parts(order: int, routine_seeds: tuple[float, ...]) -> tuple[str, ...]:
+    """order번째 루틴이 맡는 부위. 루틴끼리 부위가 겹치지 않게 한 번 섞은 부위 순서를 나눠 갖는다."""
+    shuffled = _shuffled(list(BODY_PARTS), routine_seeds, len(BODY_PARTS))
+    start = (order * PARTS_PER_WORKOUT) % len(shuffled)
+    return tuple(shuffled[start:start + PARTS_PER_WORKOUT])
+
+
 def _routine_body(catalog: dict[int, dict], order: int, inputs: WorkoutInputs) -> dict:
-    """order번째 루틴의 생성 본문. 루틴의 목표는 이 회원의 몸무게와 근력으로 정한다."""
-    seeds = inputs.routine_seeds
-    offset = order * EXERCISES_PER_ROUTINE
-    chosen = _pick_exercises(catalog, _SLOT_TYPES + (_LAST_SLOT_TYPES[order % len(_LAST_SLOT_TYPES)],), seeds, offset)
+    """order번째 루틴의 생성 본문. 종목은 회원의 풀에서, 목표는 이 회원의 몸무게와 근력으로 정한다."""
+    pool = member_pool(catalog, inputs.pool_seeds)
+    chosen = _pick_from_pool(pool, routine_parts(order, inputs.routine_seeds), inputs.routine_seeds[len(BODY_PARTS):])
     return {
         "name": f"꾸기 루틴 {order + 1}",
         "exercises": [
             {
                 "exerciseId": exercise["id"],
                 "restSeconds": REST_SECONDS,
-                "targets": [_target(exercise, inputs, _cycled(seeds, offset + slot))] * SETS_PER_EXERCISE,
+                "targets": [_target(exercise, inputs, _cycled(inputs.routine_seeds, slot))] * SETS_PER_EXERCISE,
             }
             for slot, exercise in enumerate(chosen)
         ],
     }
 
 
+def _performed_entry(exercise: dict, order: int, inputs: WorkoutInputs, seed: float) -> dict:
+    """루틴 응답의 종목 모양. 자유 운동과 운동 중 더한 종목을 업로드 본문 만들기에 넘길 때 쓴다."""
+    return {
+        "exerciseId": exercise["id"], "sortOrder": order, "restSeconds": REST_SECONDS,
+        "recordType": exercise["recordType"], "weightType": exercise["weightType"],
+        "targets": [_target(exercise, inputs, seed)] * SETS_PER_EXERCISE,
+    }
+
+
 def free_workout(catalog: dict[int, dict], inputs: WorkoutInputs) -> dict:
-    """자유 운동 구성. 루틴 응답과 같은 모양으로 만들어 업로드 본문 만들기를 함께 쓴다. id와 이름은 None이다."""
-    chosen = _pick_exercises(catalog, FREE_SLOT_TYPES, inputs.free_seeds, 0)
+    """자유 운동 구성. 오늘 부위마다 회원의 풀에서 고른다. 루틴 응답과 같은 모양이고 id와 이름은 None이다."""
+    parts = inputs.day_parts or BODY_PARTS[:PARTS_PER_WORKOUT]
+    chosen = _pick_from_pool(member_pool(catalog, inputs.pool_seeds), parts, inputs.free_seeds)
     return {
         "id": None, "name": None,
         "exercises": [
-            {
-                "exerciseId": exercise["id"], "sortOrder": order, "restSeconds": REST_SECONDS,
-                "recordType": exercise["recordType"], "weightType": exercise["weightType"],
-                "targets": [_target(exercise, inputs, _cycled(inputs.free_seeds, order - 1))] * SETS_PER_EXERCISE,
-            }
+            _performed_entry(exercise, order, inputs, _cycled(inputs.free_seeds, order - 1))
             for order, exercise in enumerate(chosen, start=1)
         ],
     }
+
+
+def replacement(catalog: dict[int, dict], keyword: str, seed: float, exclude: set[int]) -> dict | None:
+    """찾지 못한 종목 대신 그 부위에서 고를 종목. 오늘 하는 종목은 빼고 고른다. 고를 것이 없으면 None."""
+    part = MISSING_EXERCISES[keyword]
+    candidates = sorted(
+        (e for e in catalog.values() if e.get("bodyPart") == part and e["id"] not in exclude), key=lambda e: e["id"],
+    )
+    return candidates[int(seed * len(candidates))] if candidates else None
 
 
 def _setup(api: KkugiApi, inputs: WorkoutInputs) -> list[dict]:
@@ -314,22 +371,26 @@ def _actual(record_type: str, target: dict, spread: float) -> dict:
 
 def build_upload(
     inputs: WorkoutInputs, client_uuid: str, routine: dict, schedule: dict | None, catalog: dict[int, dict],
-    ended_at: datetime,
+    ended_at: datetime, added: tuple[dict, ...] = (),
 ) -> dict:
     """루틴과 입력으로 업로드 본문을 만든다. 같은 인자면 늘 같은 본문이다.
 
-    routine의 id가 None이면 자유 운동(free_workout)이다. 시작 구성이 없으므로 시작 종목·세트 대응을 보내지 않고,
-    직접 더한 세트라 건너뛰지 않는다.
+    routine의 id가 None이면 자유 운동(free_workout)이다. added는 운동 중에 더한 종목이고 루틴 종목 뒤에 붙는다.
+    자유 운동과 더한 종목은 시작 구성에 없으므로 시작 종목·세트 대응을 보내지 않고, 직접 더한 세트라 건너뛰지 않는다.
     """
     free = routine["id"] is None
     started_at = ended_at - timedelta(minutes=inputs.duration_minutes)
     exercises = sorted(routine["exercises"], key=lambda e: e["sortOrder"])
+    # 시작 구성에 없는 종목 수. 업로드 종목 목록의 뒤쪽이다
+    own_from = 0 if free else len(exercises)
+    exercises = exercises + list(added)
     total_sets = sum(len(e["targets"]) for e in exercises)
     span = int((ended_at - started_at).total_seconds())
 
     start_exercises, performed = [], []
     position = 0
     for order, exercise in enumerate(exercises, start=1):
+        own = order > own_from
         catalog_entry = catalog.get(exercise["exerciseId"])
         head = {
             "sortOrder": order,
@@ -346,11 +407,11 @@ def build_upload(
             values = _values(target)
             start_sets.append({"setNo": set_no, "target": values, "status": "PENDING"})
             roll = _cycled(inputs.set_rolls, position)
-            done = {"setNo": set_no, "target": values} | ({} if free else {"originStartSetNo": set_no})
-            if not free and roll < SKIP_RATE:
+            done = {"setNo": set_no, "target": values} | ({} if own else {"originStartSetNo": set_no})
+            if not own and roll < SKIP_RATE:
                 done["status"] = "SKIPPED"
             else:
-                spread = roll if free else (roll - SKIP_RATE) / (1 - SKIP_RATE)
+                spread = roll if own else (roll - SKIP_RATE) / (1 - SKIP_RATE)
                 # 세트 완료 시각은 운동 시간 안에 세트 순서대로 고르게 둔다
                 done |= {
                     "status": "COMPLETED",
@@ -359,7 +420,7 @@ def build_upload(
                 }
             done_sets.append(done)
             position += 1
-        if free:
+        if own:
             performed.append(head | {"sets": done_sets})
         else:
             start_exercises.append(head | {"sets": start_sets})
@@ -402,6 +463,31 @@ def _todays_open_schedule(schedules: list[dict], day: date, routines_by_id: dict
 
 
 # --- 세션 ---
+
+
+def _search_missing(ctx: SessionContext, inputs: WorkoutInputs, catalog: dict[int, dict], routine: dict) -> tuple[dict, ...]:
+    """하고 싶은 종목을 검색했는데 없어서, 그 부위를 둘러보고 대신할 종목을 운동 중에 더한다. 더한 종목을 돌려준다.
+
+    서비스에 회원이 종목을 직접 만드는 기능이 없으므로 카탈로그의 다른 종목으로 대신한다. 검색어가 카탈로그에
+    생겨 결과가 나와도 실패로 보지 않는다(그때는 검색어 목록을 고친다).
+    """
+    api = ctx.api
+    ctx.think(ctx.config.search_think)
+    api.call("GET", "/exercises", name="GET /exercises", params={
+        "keyword": inputs.missing_keyword, "page": 0, "size": BROWSE_PAGE_SIZE,
+    })
+    ctx.think(ctx.config.search_think)
+    api.call("GET", "/exercises", name="GET /exercises", params={
+        "bodyPart": MISSING_EXERCISES[inputs.missing_keyword], "page": 0, "size": BROWSE_PAGE_SIZE,
+    })
+    doing = {e["exerciseId"] for e in routine["exercises"]}
+    chosen = replacement(catalog, inputs.missing_keyword, inputs.missing_seed, doing)
+    if chosen is None:
+        return ()
+    ctx.think(ctx.config.select_think)
+    order = len(routine["exercises"]) + 1
+    return (_performed_entry(chosen, order, inputs, inputs.missing_seed),)
+
 
 
 def run(ctx: SessionContext, inputs: WorkoutInputs) -> dict:
@@ -451,8 +537,12 @@ def run(ctx: SessionContext, inputs: WorkoutInputs) -> dict:
     else:
         routine = routines[inputs.routine_pick % len(routines)]
 
+    added = ()
+    if inputs.missing_keyword:
+        added = _search_missing(ctx, inputs, catalog, routine)
+
     # 세트를 기록하는 화면이 종목마다 이전 기록을 보여 준다
-    exercise_ids = sorted({e["exerciseId"] for e in routine["exercises"]})
+    exercise_ids = sorted({e["exerciseId"] for e in (*routine["exercises"], *added)})
     previous = api.call(
         "GET", "/workout-sessions/recent-sets", name="GET /workout-sessions/recent-sets",
         params={"exerciseIds": exercise_ids},
@@ -463,7 +553,7 @@ def run(ctx: SessionContext, inputs: WorkoutInputs) -> dict:
 
     # 재실행해도 같은 본문이 나오도록 계획 시각을 쓰고 초 아래는 버린다. 서버 현재 시각을 넘지 않게 지금으로 당긴다
     ended_at = min(inputs.planned_at, ctx.now()).replace(microsecond=0)
-    body = build_upload(inputs, client_uuid, routine, schedule, catalog, ended_at)
+    body = build_upload(inputs, client_uuid, routine, schedule, catalog, ended_at, added)
 
     # 200은 같은 clientUuid와 같은 내용을 다시 보낸 경우다(응답이 유실되어 재실행했을 때)
     saved = api.call(
@@ -489,6 +579,7 @@ def run(ctx: SessionContext, inputs: WorkoutInputs) -> dict:
         "routine_id": routine["id"],
         "schedule_id": schedule["id"] if schedule else None,
         "free": not routines,
+        "added": len(added),
         "sets": len(sets),
         "completed_sets": sum(s["status"] == "COMPLETED" for s in sets),
     }

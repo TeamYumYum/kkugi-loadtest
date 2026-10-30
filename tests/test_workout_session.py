@@ -31,6 +31,11 @@ CATALOG = [
     {"id": 5, "nameKo": "푸시업", "recordType": "REPS", "weightType": "NONE", "bodyPart": "CHEST"},
     {"id": 6, "nameKo": "크런치", "recordType": "REPS", "weightType": "NONE", "bodyPart": "CORE"},
     {"id": 7, "nameKo": "플랭크", "recordType": "DURATION", "weightType": "NONE", "bodyPart": "CORE"},
+] + [
+    # 부위마다 종목 풀(3-4개)을 고를 수 있게 부위별로 넉넉히 둔다
+    {"id": 20 + 10 * i + j, "nameKo": f"{part} 종목 {j}", "recordType": "WEIGHT_REPS", "weightType": "EXTERNAL",
+     "bodyPart": part, "equipment": ("BARBELL", "DUMBBELL", "MACHINE", "CABLE", "SMITH_MACHINE")[j]}
+    for i, part in enumerate(("LOWER_BODY", "BACK", "CHEST", "SHOULDER", "ARM", "CORE")) for j in range(5)
 ]
 CATALOG_BY_ID = {e["id"]: e for e in CATALOG}
 
@@ -328,14 +333,19 @@ def test_setup_when_no_routines(tmp_path):
         "GET /weekly-workout-goal/me",
     ]
     assert server.bodies[("PUT", "/weekly-workout-goal/me")] == [{"targetCount": 3}]
+    pool = workout.member_pool(CATALOG_BY_ID, _inputs().pool_seeds)
+    routine_parts = []
     for body in server.bodies[("POST", "/routines")]:
         _check_routine_body(body, CATALOG_BY_ID)
-        record_types = [CATALOG_BY_ID[e["exerciseId"]]["recordType"] for e in body["exercises"]]
-        assert len(body["exercises"]) == 4 and record_types.count("WEIGHT_REPS") == 3
+        assert len(body["exercises"]) == 4 and len({e["exerciseId"] for e in body["exercises"]}) == 4
         assert all(len(e["targets"]) == 3 for e in body["exercises"])
-        assert len({e["exerciseId"] for e in body["exercises"]}) == 4
-    last_types = {CATALOG_BY_ID[b["exercises"][-1]["exerciseId"]]["recordType"] for b in server.bodies[("POST", "/routines")]}
-    assert last_types == {"REPS", "DURATION"}
+        # 루틴은 부위 2개를 맡고 부위마다 회원의 풀에서 2종목을 고른다
+        parts = [CATALOG_BY_ID[e["exerciseId"]]["bodyPart"] for e in body["exercises"]]
+        assert sorted(parts.count(p) for p in set(parts)) == [2, 2]
+        assert all(CATALOG_BY_ID[e["exerciseId"]] in pool[CATALOG_BY_ID[e["exerciseId"]]["bodyPart"]] for e in body["exercises"])
+        routine_parts.append(set(parts))
+    # 두 루틴은 부위가 겹치지 않는다
+    assert not routine_parts[0] & routine_parts[1]
     # 오늘 일정이 생겼으므로 그 일정에 연결한다
     assert outcome["schedule_id"] is not None
     assert server.goal == 3
@@ -460,7 +470,7 @@ def test_upload_links_todays_schedule_and_satisfies_server_rules(tmp_path):
     statuses = [s["status"] for e in body["performedExercises"] for s in e["sets"]]
     # 굴림값 0.05, 0.1이 SKIP_RATE보다 작다
     assert statuses == ["SKIPPED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "SKIPPED"]
-    assert outcome == {"session_id": server.sessions[0]["id"], "routine_id": 11, "schedule_id": 50, "free": False,
+    assert outcome == {"session_id": server.sessions[0]["id"], "routine_id": 11, "schedule_id": 50, "free": False, "added": 0,
                        "sets": 7, "completed_sets": 5}
     times = [s["completedAt"] for e in body["performedExercises"] for s in e["sets"] if s["status"] == "COMPLETED"]
     assert times == sorted(times)
@@ -505,12 +515,15 @@ def test_at_least_one_completed_set_when_all_rolls_skip(tmp_path):
 
 
 def test_setup_routines_produce_valid_upload(tmp_path):
-    """서버가 만든 루틴(준비 경로)에서 나온 본문도 규칙을 지킨다. 무게 종류 셋을 모두 거치게 한다."""
+    """서버가 만든 루틴(준비 경로)에서 나온 본문도 규칙을 지킨다. 무게 종류 넷을 모두 거치게 한다."""
     weight_types = set()
-    for i, seeds in enumerate([(0.0,), (0.3,), (0.5,), (0.99,), (0.1, 0.4, 0.7, 0.2, 0.8, 0.6, 0.35, 0.05)]):
+    rng = random.Random(7)
+    for i in range(40):
         workout.clear_catalog()
         server = _FakeServer(goal=None)
-        workout.run(_ctx(_api_in(tmp_path, f"run{i}", server)), _inputs(routine_seeds=seeds))
+        inputs = _inputs(routine_seeds=tuple(rng.random() for _ in range(10)),
+                         pool_seeds=tuple(rng.random() for _ in range(30)))
+        workout.run(_ctx(_api_in(tmp_path, f"run{i}", server)), inputs)
         weight_types |= {e["weightType"] for r in server.routines for e in r["exercises"]}
         for body in server.bodies[("POST", "/routines")]:
             _check_routine_body(body, CATALOG_BY_ID)
@@ -585,7 +598,8 @@ def test_fails_when_goal_not_configured(tmp_path):
 def test_free_workout_when_member_does_not_make_routines(tmp_path):
     server = _FakeServer(goal=None)
 
-    outcome = workout.run(_ctx(_api(tmp_path, server)), _inputs(custom_routine=False, free_seeds=(0.2, 0.7, 0.4)))
+    inputs = _inputs(custom_routine=False, free_seeds=(0.2, 0.7, 0.4, 0.9), day_parts=("BACK", "ARM"))
+    outcome = workout.run(_ctx(_api(tmp_path, server)), inputs)
 
     assert _names(server) == HOME_NAMES + [
         "GET /routines", "GET /workout-schedules", "GET /workout-sessions",
@@ -599,7 +613,10 @@ def test_free_workout_when_member_does_not_make_routines(tmp_path):
     assert "routineId" not in body and "routineName" not in body and "scheduleId" not in body
     assert body["startExercises"] == []
     performed = body["performedExercises"]
-    assert [CATALOG_BY_ID[e["exerciseId"]]["recordType"] for e in performed] == list(workout.FREE_SLOT_TYPES)
+    # 오늘 부위마다 회원의 풀에서 2종목씩 한다
+    pool = workout.member_pool(CATALOG_BY_ID, inputs.pool_seeds)
+    assert [CATALOG_BY_ID[e["exerciseId"]]["bodyPart"] for e in performed] == ["BACK", "BACK", "ARM", "ARM"]
+    assert all(CATALOG_BY_ID[e["exerciseId"]] in pool[CATALOG_BY_ID[e["exerciseId"]]["bodyPart"]] for e in performed)
     assert all("originStartOrder" not in e for e in performed)
     sets = [s for e in performed for s in e["sets"]]
     # 직접 더한 세트라 건너뛰지 않는다
@@ -620,8 +637,8 @@ def test_free_workout_keeps_existing_goal(tmp_path):
 
 
 def test_free_workout_picks_differ_by_seeds(tmp_path):
-    first = workout.free_workout(CATALOG_BY_ID, _inputs(free_seeds=(0.1, 0.1, 0.1)))
-    second = workout.free_workout(CATALOG_BY_ID, _inputs(free_seeds=(0.9, 0.6, 0.9)))
+    first = workout.free_workout(CATALOG_BY_ID, _inputs(free_seeds=(0.1, 0.1, 0.1, 0.1)))
+    second = workout.free_workout(CATALOG_BY_ID, _inputs(free_seeds=(0.9, 0.6, 0.9, 0.6)))
     assert [e["exerciseId"] for e in first["exercises"]] != [e["exerciseId"] for e in second["exercises"]]
 
 
@@ -691,3 +708,75 @@ def test_routine_targets_follow_member_body(tmp_path):
     reps = [t["targetReps"] for b in light.bodies[("POST", "/routines")] for e in b["exercises"] for t in e["targets"]
             if CATALOG_BY_ID[e["exerciseId"]]["recordType"] == "WEIGHT_REPS"]
     assert all(10 <= r <= 15 for r in reps)
+
+
+# --- 회원별 종목 풀과 부위 ---
+
+
+def test_member_pool_has_three_or_four_per_part():
+    rng = random.Random(3)
+    pools = []
+    for _ in range(50):
+        seeds = tuple(rng.random() for _ in range(len(workout.BODY_PARTS) * workout.POOL_SEEDS_PER_PART))
+        pool = workout.member_pool(CATALOG_BY_ID, seeds)
+        assert pool == workout.member_pool(CATALOG_BY_ID, seeds)
+        assert set(pool) == set(workout.BODY_PARTS)
+        for part, exercises in pool.items():
+            available = sum(e["bodyPart"] == part for e in CATALOG)
+            assert min(workout.POOL_MIN, available) <= len(exercises) <= workout.POOL_MAX
+            assert all(e["bodyPart"] == part for e in exercises)
+            assert len({e["id"] for e in exercises}) == len(exercises)
+        pools.append({part: [e["id"] for e in exercises] for part, exercises in pool.items()})
+    # 회원마다 풀이 다르다
+    assert len({str(p) for p in pools}) > 40
+    sizes = {len(v) for p in pools for v in p.values()}
+    assert sizes == {3, 4}
+
+
+def test_routines_split_body_parts():
+    rng = random.Random(5)
+    for _ in range(50):
+        seeds = tuple(rng.random() for _ in range(10))
+        first, second = workout.routine_parts(0, seeds), workout.routine_parts(1, seeds)
+        assert len(first) == len(second) == workout.PARTS_PER_WORKOUT
+        assert not set(first) & set(second)
+
+
+# --- 못 찾는 검색 ---
+
+
+@pytest.mark.parametrize("keyword", list(workout.MISSING_EXERCISES))
+def test_missing_search_adds_replacement_to_free_workout(tmp_path, keyword):
+    server = _FakeServer(goal=3)
+    inputs = _inputs(custom_routine=False, day_parts=("CHEST", "ARM"), missing_keyword=keyword, missing_seed=0.4)
+
+    outcome = workout.run(_ctx(_api(tmp_path, server)), inputs)
+
+    names = _names(server)
+    i = names.index("GET /workout-sessions/recent-sets")
+    assert names[i - 2:i] == ["GET /exercises", "GET /exercises"]
+    keyword_params, part_params = server.params[("GET", "/exercises")][-2:]
+    assert keyword_params["keyword"] == keyword and part_params["bodyPart"] == workout.MISSING_EXERCISES[keyword]
+    body = server.bodies[("POST", "/workout-sessions")][0]
+    _check_upload(body, NOW, set(CATALOG_BY_ID))
+    added = body["performedExercises"][-1]
+    assert len(body["performedExercises"]) == 5 and outcome["added"] == 1
+    assert CATALOG_BY_ID[added["exerciseId"]]["bodyPart"] == workout.MISSING_EXERCISES[keyword]
+    assert added["exerciseId"] not in {e["exerciseId"] for e in body["performedExercises"][:-1]}
+    assert added["exerciseId"] in server.params[("GET", "/workout-sessions/recent-sets")][0]["exerciseIds"]
+
+
+def test_missing_search_adds_exercise_during_routine_workout(tmp_path):
+    """루틴 운동 중에 더한 종목은 시작 구성에 없으므로 대응 순번 없이 뒤에 붙는다."""
+    server = _FakeServer(routines=[_routine()], goal=3)
+
+    outcome = workout.run(_ctx(_api(tmp_path, server)), _inputs(missing_keyword="로잉 머신"))
+
+    body = server.bodies[("POST", "/workout-sessions")][0]
+    _check_upload(body, NOW, set(CATALOG_BY_ID))
+    assert len(body["startExercises"]) == 3 and len(body["performedExercises"]) == 4
+    added = body["performedExercises"][-1]
+    assert added["sortOrder"] == 4 and "originStartOrder" not in added
+    assert all("originStartSetNo" not in s and s["status"] == "COMPLETED" for s in added["sets"])
+    assert CATALOG_BY_ID[added["exerciseId"]]["bodyPart"] == "BACK"
+    assert outcome["added"] == 1 and outcome["free"] is False

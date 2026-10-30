@@ -162,12 +162,13 @@ def test_meal_inputs_keep_values_from_before_edit_was_added():
 def test_evening_workout_follows_weekly_target(plans):
     """운동은 운동 창의 첫 조회 세션이고, 계정 값은 날짜와 관계없이 같고, 하루 비율은 목표 / 7을 넘지 않는다."""
     from kkugi_load.sessions.workout import (
-        BODY_PARTS, EXERCISES_PER_ROUTINE, FEMALE_STRENGTH, FREE_SLOT_TYPES, SETS_PER_EXERCISE,
+        BODY_PARTS, EXERCISES_PER_ROUTINE, FEMALE_STRENGTH, MISSING_EXERCISES, PARTS_PER_WORKOUT,
+        POOL_SEEDS_PER_PART, SETS_PER_EXERCISE,
     )
     workout = CONFIG.personas["dieter"]["workout"]
     start, end = hhmm(workout["from"]), hhmm(workout["to"])
     sessions = 0
-    targets, customs = [], []
+    targets, customs, missing, day_parts = [], [], [], set()
     for index, plan in enumerate(plans[:2000]):
         records = [p for p in plan if p.session == "workout"]
         assert len(records) <= 1
@@ -178,12 +179,18 @@ def test_evening_workout_follows_weekly_target(plans):
             inputs = record.inputs
             assert workout["weekly_target_min"] <= inputs.weekly_target <= workout["weekly_target_max"]
             assert 1 <= inputs.routine_count <= workout["routines_max"]
-            assert len(inputs.routine_seeds) == workout["routines_max"] * EXERCISES_PER_ROUTINE
+            assert len(inputs.routine_seeds) == len(BODY_PARTS) + EXERCISES_PER_ROUTINE
+            assert len(inputs.pool_seeds) == len(BODY_PARTS) * POOL_SEEDS_PER_PART
             assert len(inputs.set_rolls) == EXERCISES_PER_ROUTINE * SETS_PER_EXERCISE
             assert workout["duration_minutes_min"] <= inputs.duration_minutes <= workout["duration_minutes_max"]
             assert inputs.browse_body_part in (None, *BODY_PARTS)
             assert inputs.reps_range == (workout["reps_min"], workout["reps_max"])
-            assert len(inputs.free_seeds) == len(FREE_SLOT_TYPES)
+            assert len(inputs.free_seeds) == EXERCISES_PER_ROUTINE
+            assert len(inputs.day_parts) == len(set(inputs.day_parts)) == PARTS_PER_WORKOUT
+            assert set(inputs.day_parts) <= set(BODY_PARTS)
+            assert inputs.missing_keyword is None or inputs.missing_keyword in MISSING_EXERCISES
+            missing.append(inputs.missing_keyword is not None)
+            day_parts.add(inputs.day_parts)
             profile = build_account(CONFIG, index).profile.body
             assert inputs.body_weight_kg == profile.weight_kg
             gender = FEMALE_STRENGTH if profile.gender == "FEMALE" else 1.0
@@ -193,10 +200,14 @@ def test_evening_workout_follows_weekly_target(plans):
             # 계정 고정 값은 다른 날에도 같다
             other = [p for p in _plan(index, day=date(2026, 10, 29)) if p.session == "workout"]
             for o in other:
-                fixed = ("weekly_target", "routine_count", "routine_seeds", "custom_routine", "strength")
+                fixed = ("weekly_target", "routine_count", "routine_seeds", "custom_routine", "strength", "pool_seeds")
                 assert [getattr(o.inputs, k) for k in fixed] == [getattr(inputs, k) for k in fixed]
     assert sessions > 0
     assert sessions <= 2000 * workout["weekly_target_max"] / 7
     assert set(targets) == set(range(workout["weekly_target_min"], workout["weekly_target_max"] + 1))
     p = float(workout["custom_routine_probability"])
     assert abs(sum(customs) - len(customs) * p) <= _tolerance(len(customs), p)
+    p = float(workout["missing_exercise_probability"])
+    assert abs(sum(missing) - len(missing) * p) <= _tolerance(len(missing), p)
+    # 오늘 부위는 사람과 날짜마다 다르다. 부위 6개에서 순서 있게 2개를 고르는 30가지가 거의 다 나온다
+    assert len(day_parts) >= 25
