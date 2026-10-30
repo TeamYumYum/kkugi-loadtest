@@ -64,7 +64,7 @@ def test_one_session_per_hour_and_one_meal_per_window():
         assert all(n == 1 for n in logged.values())
         for session in plan:
             if session.session != "meal_log":
-                assert (session.session, session.name) == ("view", "dieter_view")
+                assert (session.session, session.name) in {("view", "dieter_view"), ("weight_log", "dieter_weight")}
                 continue
             window = meals[session.inputs.meal_type]
             assert hhmm(window["from"]) <= session.at.time() < hhmm(window["to"])
@@ -113,3 +113,47 @@ def test_meal_counts_follow_window_and_probability(plans):
         p = _chance_of_opening_in_window(window) * float(window["probability"])
         expected = ACCOUNTS * p
         assert abs(counts[meal_type] - expected) <= _tolerance(ACCOUNTS, p), (meal_type, counts[meal_type], expected)
+
+
+def test_meal_edit_changes_one_amount_at_edit_probability(plans):
+    meals = [p.inputs for plan in plans for p in plan if p.session == "meal_log"]
+    edited = [m for m in meals if m.edit_grams is not None]
+    for meal in edited:
+        changed = [(a, b) for a, b in zip(meal.grams, meal.edit_grams) if a != b]
+        assert len(meal.edit_grams) == len(meal.grams) and len(changed) == 1
+        assert all(1 <= b <= 5000 for _, b in changed)
+    p = float(CONFIG.personas["dieter"]["edit_probability"])
+    assert abs(len(edited) - len(meals) * p) <= _tolerance(len(meals), p)
+
+
+def test_one_morning_weight_in_window_with_drifted_value(plans):
+    weight = CONFIG.personas["dieter"]["body_weight"]
+    start, end = hhmm(weight["from"]), hhmm(weight["to"])
+    sessions = 0
+    for index, plan in enumerate(plans[:2000]):
+        records = [p for p in plan if p.session == "weight_log"]
+        assert len(records) <= 1
+        for record in records:
+            sessions += 1
+            assert start <= record.at.time() < end
+            # 기록 세션보다 앞선 창 안의 조회 세션은 없다. 체중 기록은 창의 첫 조회 세션이다
+            assert not [p for p in plan if p.session == "view" and start <= p.at.time() < record.at.time()]
+            days = (DAY - date.fromisoformat(weight["reference_date"])).days
+            trend = build_account(CONFIG, index).profile.body.weight_kg + days * float(weight["trend_kg_per_day"])
+            # 흔들림 범위에 0.1kg 반올림 오차를 더한다
+            assert abs(record.inputs.weight_kg - trend) <= float(weight["noise_kg"]) + 0.05 + 1e-9
+    assert sessions > 0
+
+
+def test_meal_inputs_keep_values_from_before_edit_was_added():
+    """수정 값은 해시 값의 뒤에 붙였으므로 기록 여부, 검색어, 양, 고르기 값은 그대로다."""
+    from kkugi_load.accounts.identity import seeded_uniforms
+    settings = CONFIG.personas["dieter"]
+    items = int(settings["items_per_meal"])
+    for index in range(200):
+        for session in _plan(index):
+            if session.session != "meal_log":
+                continue
+            meal = session.inputs
+            old = seeded_uniforms(CONFIG.seed, "meal", index, DAY.isoformat(), meal.meal_type, count=1 + 3 * items)
+            assert meal.picks == tuple(int(x * 1000) for x in old[1 + 2 * items:])
