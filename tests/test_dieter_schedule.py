@@ -64,7 +64,7 @@ def test_one_session_per_hour_and_one_meal_per_window():
         assert all(n == 1 for n in logged.values())
         for session in plan:
             if session.session != "meal_log":
-                assert (session.session, session.name) == ("view", "dieter_view")
+                assert (session.session, session.name) in {("view", "dieter_view"), ("weight_log", "dieter_weight"), ("workout", "dieter_workout")}
                 continue
             window = meals[session.inputs.meal_type]
             assert hhmm(window["from"]) <= session.at.time() < hhmm(window["to"])
@@ -113,3 +113,101 @@ def test_meal_counts_follow_window_and_probability(plans):
         p = _chance_of_opening_in_window(window) * float(window["probability"])
         expected = ACCOUNTS * p
         assert abs(counts[meal_type] - expected) <= _tolerance(ACCOUNTS, p), (meal_type, counts[meal_type], expected)
+
+
+def test_meal_edit_changes_one_amount_at_edit_probability(plans):
+    meals = [p.inputs for plan in plans for p in plan if p.session == "meal_log"]
+    edited = [m for m in meals if m.edit_grams is not None]
+    for meal in edited:
+        changed = [(a, b) for a, b in zip(meal.grams, meal.edit_grams) if a != b]
+        assert len(meal.edit_grams) == len(meal.grams) and len(changed) == 1
+        assert all(1 <= b <= 5000 for _, b in changed)
+    p = float(CONFIG.personas["dieter"]["edit_probability"])
+    assert abs(len(edited) - len(meals) * p) <= _tolerance(len(meals), p)
+
+
+def test_one_morning_weight_in_window_with_drifted_value(plans):
+    weight = CONFIG.personas["dieter"]["body_weight"]
+    start, end = hhmm(weight["from"]), hhmm(weight["to"])
+    sessions = 0
+    for index, plan in enumerate(plans[:2000]):
+        records = [p for p in plan if p.session == "weight_log"]
+        assert len(records) <= 1
+        for record in records:
+            sessions += 1
+            assert start <= record.at.time() < end
+            # 기록 세션보다 앞선 창 안의 조회 세션은 없다. 체중 기록은 창의 첫 조회 세션이다
+            assert not [p for p in plan if p.session == "view" and start <= p.at.time() < record.at.time()]
+            days = (DAY - date.fromisoformat(weight["reference_date"])).days
+            trend = build_account(CONFIG, index).profile.body.weight_kg + days * float(weight["trend_kg_per_day"])
+            # 흔들림 범위에 0.1kg 반올림 오차를 더한다
+            assert abs(record.inputs.weight_kg - trend) <= float(weight["noise_kg"]) + 0.05 + 1e-9
+    assert sessions > 0
+
+
+def test_meal_inputs_keep_values_from_before_edit_was_added():
+    """수정 값은 해시 값의 뒤에 붙였으므로 기록 여부, 검색어, 양, 고르기 값은 그대로다."""
+    from kkugi_load.accounts.identity import seeded_uniforms
+    settings = CONFIG.personas["dieter"]
+    items = int(settings["items_per_meal"])
+    for index in range(200):
+        for session in _plan(index):
+            if session.session != "meal_log":
+                continue
+            meal = session.inputs
+            old = seeded_uniforms(CONFIG.seed, "meal", index, DAY.isoformat(), meal.meal_type, count=1 + 3 * items)
+            assert meal.picks == tuple(int(x * 1000) for x in old[1 + 2 * items:])
+
+
+def test_evening_workout_follows_weekly_target(plans):
+    """운동은 운동 창의 첫 조회 세션이고, 계정 값은 날짜와 관계없이 같고, 하루 비율은 목표 / 7을 넘지 않는다."""
+    from kkugi_load.sessions.workout import (
+        BODY_PARTS, EXERCISES_PER_ROUTINE, FEMALE_STRENGTH, MISSING_EXERCISES, PARTS_PER_WORKOUT,
+        POOL_SEEDS_PER_PART, SETS_PER_EXERCISE,
+    )
+    workout = CONFIG.personas["dieter"]["workout"]
+    start, end = hhmm(workout["from"]), hhmm(workout["to"])
+    sessions = 0
+    targets, customs, missing, day_parts = [], [], [], set()
+    for index, plan in enumerate(plans[:2000]):
+        records = [p for p in plan if p.session == "workout"]
+        assert len(records) <= 1
+        for record in records:
+            sessions += 1
+            assert start <= record.at.time() < end
+            assert not [p for p in plan if p.session == "view" and start <= p.at.time() < record.at.time()]
+            inputs = record.inputs
+            assert workout["weekly_target_min"] <= inputs.weekly_target <= workout["weekly_target_max"]
+            assert 1 <= inputs.routine_count <= workout["routines_max"]
+            assert len(inputs.routine_seeds) == len(BODY_PARTS) + EXERCISES_PER_ROUTINE
+            assert len(inputs.pool_seeds) == len(BODY_PARTS) * POOL_SEEDS_PER_PART
+            assert len(inputs.set_rolls) == EXERCISES_PER_ROUTINE * SETS_PER_EXERCISE
+            assert workout["duration_minutes_min"] <= inputs.duration_minutes <= workout["duration_minutes_max"]
+            assert inputs.browse_body_part in (None, *BODY_PARTS)
+            assert inputs.reps_range == (workout["reps_min"], workout["reps_max"])
+            assert len(inputs.free_seeds) == EXERCISES_PER_ROUTINE
+            assert len(inputs.day_parts) == len(set(inputs.day_parts)) == PARTS_PER_WORKOUT
+            assert set(inputs.day_parts) <= set(BODY_PARTS)
+            assert inputs.missing_keyword is None or inputs.missing_keyword in MISSING_EXERCISES
+            missing.append(inputs.missing_keyword is not None)
+            day_parts.add(inputs.day_parts)
+            profile = build_account(CONFIG, index).profile.body
+            assert inputs.body_weight_kg == profile.weight_kg
+            gender = FEMALE_STRENGTH if profile.gender == "FEMALE" else 1.0
+            assert 0.8 - 1e-9 <= inputs.strength / (workout["strength"] * gender) <= 1.2 + 1e-9
+            customs.append(inputs.custom_routine)
+            targets.append(inputs.weekly_target)
+            # 계정 고정 값은 다른 날에도 같다
+            other = [p for p in _plan(index, day=date(2026, 10, 29)) if p.session == "workout"]
+            for o in other:
+                fixed = ("weekly_target", "routine_count", "routine_seeds", "custom_routine", "strength", "pool_seeds")
+                assert [getattr(o.inputs, k) for k in fixed] == [getattr(inputs, k) for k in fixed]
+    assert sessions > 0
+    assert sessions <= 2000 * workout["weekly_target_max"] / 7
+    assert set(targets) == set(range(workout["weekly_target_min"], workout["weekly_target_max"] + 1))
+    p = float(workout["custom_routine_probability"])
+    assert abs(sum(customs) - len(customs) * p) <= _tolerance(len(customs), p)
+    p = float(workout["missing_exercise_probability"])
+    assert abs(sum(missing) - len(missing) * p) <= _tolerance(len(missing), p)
+    # 오늘 부위는 사람과 날짜마다 다르다. 부위 6개에서 순서 있게 2개를 고르는 30가지가 거의 다 나온다
+    assert len(day_parts) >= 25
