@@ -44,6 +44,9 @@ class Pool:
     count: int
     # 이 시간대(시작, 끝)에 계획된 세션만 실행한다. 비어 있으면 하루 전체
     only_between: tuple[tuple[time, time], ...]
+    # 단계적으로 계정을 추가할 때 기존 계정의 배정을 유지하기 위한 풀별 고정 페르소나.
+    # 없으면 기존 weight 추첨을 쓴다.
+    persona: str | None = None
 
     @property
     def end(self) -> int:
@@ -273,7 +276,17 @@ def loads(text: str, env: dict[str, str] | None = None) -> Config:
         start=int(env.get("KKUGI_ACCOUNT_START", pool_raw["start"])),
         count=int(env.get("KKUGI_ACCOUNT_COUNT", pool_raw["count"])),
         only_between=tuple((hhmm(a), hhmm(b)) for a, b in pool_raw.get("only_between", [])),
+        persona=pool_raw.get("persona"),
     )
+    if pool.persona is not None and pool.persona not in personas:
+        raise ValueError(f"계정 풀 {pool_name}에 설정한 페르소나가 없음: {pool.persona}")
+    if "beginner" in personas:
+        workout = personas["beginner"]["workout"]
+        low, high = workout["weekly_target_min"], workout["weekly_target_max"]
+        if type(low) is not int or type(high) is not int or not 1 <= low <= high <= 7:
+            raise ValueError("운동 초보자의 주간 목표는 1~7 정수여야 한다")
+        if not hhmm(workout["from"]) < hhmm(workout["to"]):
+            raise ValueError("운동 초보자의 운동 창은 from이 to보다 빨라야 한다")
     if pool.start < 0 or pool.count < 1:
         raise ValueError(f"계정 풀 {pool_name}의 범위가 잘못됨: start={pool.start}, count={pool.count}")
     # 기본값으로 채우지 않는다. 빠지면 시작 배율을 모르는 채로 실행하게 된다

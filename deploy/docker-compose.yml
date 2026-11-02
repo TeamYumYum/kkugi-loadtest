@@ -1,4 +1,4 @@
-# 관측 서버에 띄우는 인공 트래픽 발생기. Master 하나와 상시 Worker 둘이다.
+# 관측 서버에 띄우는 인공 트래픽 발생기. Master 하나와 상시 Worker 넷이다.
 #
 #   master          통계 집계, 계정 범위 확인, 웹 UI와 조절 경로(/kkugi/*), 거버너. 세션은 실행하지 않는다
 #   worker-private  계정 풀 base. 도메인을 앱 서버 프라이빗 IP로 매핑해 프라이빗 경로로 보낸다
@@ -15,9 +15,9 @@
 
 name: kkugi-loadgen
 
-# 세 컨테이너가 함께 쓰는 값
+# 모든 컨테이너가 함께 쓰는 값
 x-common: &common
-  # 같은 이미지를 세 컨테이너가 쓴다. 이미 만든 층은 캐시를 쓰므로 build를 셋에 두어도 실제로는 한 번 만든다
+  # Master와 Worker 모두 같은 이미지를 쓴다. 같은 층은 빌드 캐시를 재사용한다.
   build:
     context: ..
     dockerfile: Dockerfile
@@ -82,7 +82,7 @@ services:
           cpus: "0.5"
           memory: 512m
 
-  worker-private:
+  worker-private: &private-worker
     <<: *common
     command: ["--worker", "--master-host=master"]
     depends_on:
@@ -102,7 +102,7 @@ services:
       - state:/app/state
     deploy: *worker-limits
 
-  worker-public:
+  worker-public: &public-worker
     <<: *common
     command: ["--worker", "--master-host=master"]
     depends_on:
@@ -118,8 +118,24 @@ services:
       - state:/app/state
     deploy: *worker-limits
 
+  # 기존 다이어터 Worker와 설정은 같고, 계정 풀과 상태 DB만 다르다.
+  worker-beginner-private:
+    <<: *private-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: beginner-private
+      KKUGI_STATE_DB: /app/state/beginner-private.db
+
+  worker-beginner-public:
+    <<: *public-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: beginner-public
+      KKUGI_ROUTE: public
+      KKUGI_STATE_DB: /app/state/beginner-public.db
+
 volumes:
-  # Worker별 상태 DB 파일(base.db, public.db). 지우면 토큰을 다시 받고 온보딩 여부를 서버에서 다시 확인한다
+  # Worker별 상태 DB 파일. 기존 base.db, public.db는 그대로 유지한다.
   state:
   # Master의 통계 CSV. 시작마다 kkugi-<시작 시각>_stats.csv, _stats_history.csv, _failures.csv, _exceptions.csv 네 개
   stats:
