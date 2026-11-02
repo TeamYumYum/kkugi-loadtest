@@ -214,6 +214,34 @@ def _names(server):
     return [name for _, _, name in server.sent]
 
 
+def test_beginner_plan_uses_shared_setup_upload_and_duplicate_protection(tmp_path):
+    from kkugi_load.personas import PERSONAS
+    config = config_module.load({"KKUGI_POOL": "beginner-private"})
+    for index in range(config.pool.start, config.pool.end):
+        account = build_account(config, index)
+        planned = next((p for p in PERSONAS["beginner"].plan_day(config, account, PLANNED_AT.date()) if p.session == "workout"), None)
+        if planned is not None:
+            break
+    assert planned is not None
+    server = _FakeServer(goal=None)
+    store = StateStore(tmp_path / "beginner.db")
+    state = store.load(account.index, account.persona)
+    state.member_id, state.access_token, state.refresh_token, state.onboarded = 1, _jwt(4102444800), "r", True
+    store.save(state)
+    api = KkugiApi(server, config, account, state, store)
+    now = planned.at + timedelta(minutes=1)
+    ctx = SessionContext(api, config, lambda: now, lambda _: None, random.Random(0))
+    result = workout.run(ctx, planned.inputs)
+    assert result["free"] is False
+    assert len(server.routines) == planned.inputs.routine_count
+    assert server.goal == planned.inputs.weekly_target
+    _check_upload(server.sessions[0]["body"], now, set(CATALOG_BY_ID))
+    with pytest.raises(SessionSkipped):
+        workout.run(ctx, planned.inputs)
+    assert len(server.sessions) == 1
+    store.close()
+
+
 # --- 서버 규칙 검사 ---
 
 

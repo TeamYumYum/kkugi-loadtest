@@ -85,22 +85,37 @@ recovery_step = 0.1
 # 서버의 상시 Worker(프라이빗 경로). 계정 수를 늘릴 때 public과 같은 비율(95:5)로 함께 늘린다
 start = 0
 count = 950
+persona = "dieter"
 
 [pools.public]
 # 공인 경로 전용 Worker. base와 같은 비율로 함께 늘린다. KKUGI_ROUTE=public으로 띄워 HTTP 요청 통계 이름에
 # [public]을 붙인다. 요청의 5%를 공인 주소로 보내기 위한 풀이다(notes/decisions/2026-10-29-route-split.md)
 start = 950
 count = 50
+persona = "dieter"
+
+# 기존 0-999번은 유지하고 새 운동 초보자 1,000명만 별도 풀에 둔다.
+[pools.beginner-private]
+start = 1000
+count = 950
+persona = "beginner"
+
+[pools.beginner-public]
+start = 1950
+count = 50
+persona = "beginner"
 
 [pools.peak-1]
 # 팀원 노트북 Worker. 피크 시간대에만 추가 인구로 활동한다. 노트북마다 다른 풀을 쓴다. 가정
 start = 10000
 count = 1000
+persona = "dieter"
 only_between = [["11:30", "13:30"], ["17:30", "19:30"]]
 
 [pools.peak-2]
 start = 11000
 count = 1000
+persona = "dieter"
 only_between = [["11:30", "13:30"], ["17:30", "19:30"]]
 
 [schedule]
@@ -115,11 +130,11 @@ select_min = 1.0
 select_max = 4.0
 
 # --- 페르소나 ---
-# weight는 계정에 페르소나를 배정하는 비율이다. 구현한 페르소나만 둔다.
-# 비율을 바꾸면 이미 쓰던 계정의 페르소나가 바뀔 수 있다. 상태 DB와 어긋나면 발생기가 그 계정을 거부한다.
+# 현재는 풀의 persona로 고정해 다이어터 1,000명과 운동 초보자 1,000명을 따로 실행한다.
+# weight 추첨은 persona가 없는 풀에만 적용한다. 기존 계정의 배정이 바뀌면 상태 DB 검사가 거부한다.
 
 [personas.dieter]
-# 팀 문서의 비율은 35%다(가정). 지금은 다이어터만 구현해 모든 계정이 다이어터다
+# 최종 목표 비율 35%. 이번 실행은 기존 1,000명을 유지한다.
 weight = 35
 # 페르소나 활동 배수. 공통 표의 확률에 곱한다. 필수 값이다
 activity = 1.0
@@ -194,4 +209,28 @@ reps_min = 10
 reps_max = 15
 # 하고 싶은 종목을 검색했는데 카탈로그에 없어서, 그 부위를 둘러보고 다른 종목을 더하는 운동의 비율(가정).
 # 서비스에 회원이 종목을 직접 만드는 기능은 없다
+missing_exercise_probability = 0.02
+
+# 실제 실행 인원은 풀별로 고정한다. 이 비중 25는 장기 목표 비율이다.
+# 추가로 열어 보는 홈 화면의 빈도에 활동 배수 0.8을 적용한다(가정).
+[personas.beginner]
+weight = 25
+activity = 0.8
+
+# 운동을 마친 뒤 기존 workout 세션으로 기록한다. 주별로 목표 횟수만큼 요일을 고정한다.
+[personas.beginner.workout]
+from = "18:00"
+to = "22:00"
+weekly_target_min = 2
+weekly_target_max = 3
+routines_max = 2
+duration_minutes_min = 30
+duration_minutes_max = 60
+browse_probability = 0.3
+# 운동 초보자는 직접 루틴을 만든다.
+custom_routine_probability = 1.0
+# 초보 성인 남성 기준, 성별·개인차·몸무게는 공통 생성기가 반영한다.
+strength = 1.0
+reps_min = 8
+reps_max = 12
 missing_exercise_probability = 0.02

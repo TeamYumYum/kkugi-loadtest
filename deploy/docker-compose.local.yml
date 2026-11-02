@@ -35,3 +35,16 @@ services:
       KKUGI_SCHEDULE: immediate
       KKUGI_ACCOUNT_START: "105"
       KKUGI_ACCOUNT_COUNT: "5"
+
+  worker-beginner-private:
+    extra_hosts: !reset []
+    environment:
+      KKUGI_SCHEDULE: immediate
+      KKUGI_ACCOUNT_START: "110"
+      KKUGI_ACCOUNT_COUNT: "5"
+
+  worker-beginner-public:
+    environment:
+      KKUGI_SCHEDULE: immediate
+      KKUGI_ACCOUNT_START: "115"
+      KKUGI_ACCOUNT_COUNT: "5"

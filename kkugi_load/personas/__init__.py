@@ -6,12 +6,13 @@ from kkugi_load.accounts.identity import Account, persona_of
 from kkugi_load.config import Config
 from kkugi_load.personas.base import Persona
 from kkugi_load.personas.dieter import Dieter
+from kkugi_load.personas.beginner import Beginner
 
-PERSONAS: dict[str, Persona] = {persona.name: persona for persona in [Dieter()]}
+PERSONAS: dict[str, Persona] = {persona.name: persona for persona in [Dieter(), Beginner()]}
 
 
 def build_account(config: Config, index: int) -> Account:
-    name = persona_of(config, index)
+    name = config.pool.persona or persona_of(config, index)
     if name not in PERSONAS:
         raise ValueError(f"설정에 있지만 구현하지 않은 페르소나: {name}")
     return Account(
