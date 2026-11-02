@@ -56,3 +56,4 @@
 | 2026-10-29 | [요청 경로 분할은 공인 경로 전용 Worker로 한다](decisions/2026-10-29-route-split.md) | 결정 |
 | 2026-10-30 | [페르소나와 세션 확장 설계안](decisions/2026-10-30-persona-session-expansion.md) | 일부 대체됨 |
 | 2026-11-02 | [계정 번호 구간과 2배수 증량 순서](decisions/2026-11-02-account-ranges-and-ramp.md) | 일부 미결 |
+| 2026-11-02 | [기준선: 다이어터 1,000명의 TPS·세션/s·DB TPS](decisions/2026-11-02-baseline-1000.md) | 결정 |
