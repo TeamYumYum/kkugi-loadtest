@@ -8,7 +8,7 @@
 | 항목 | 값 |
 |---|---|
 | 날짜 | 2026-10-30 |
-| 상태 | 미결(제안). 아래 "미결"의 사용자 결정을 기다린다 |
+| 상태 | 일부 대체됨(→ [2026-11-02-account-ranges-and-ramp.md](2026-11-02-account-ranges-and-ramp.md): 워치 유저 제외, 계정 번호 구간과 증량 순서) |
 | 관련 | [실측 범위](2026-10-29-persona-scope.md), [구현 계획](../plan.md) "이후", 서비스 저장소 `docs/operations/synthetic-traffic.md` 4.1·4.2·6.3절 |
 
 API는 서비스 저장소 `origin/main` `ae844a44`(2026-10-30 15:00 병합)의 `contracts/openapi.json`에서 확인했다.
