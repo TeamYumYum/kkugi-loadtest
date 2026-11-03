@@ -105,6 +105,28 @@ start = 1950
 count = 50
 persona = "beginner"
 
+# 4,000명 단계(2026-11-03). 페르소나마다 예약한 1만 칸 구간의 앞에서부터 쓴다
+# (notes/decisions/2026-11-02-account-ranges-and-ramp.md)
+[pools.batch-private]
+start = 30000
+count = 950
+persona = "batch"
+
+[pools.batch-public]
+start = 30950
+count = 50
+persona = "batch"
+
+[pools.expert-private]
+start = 40000
+count = 950
+persona = "expert"
+
+[pools.expert-public]
+start = 40950
+count = 50
+persona = "expert"
+
 [pools.peak-1]
 # 팀원 노트북 Worker. 피크 시간대에만 추가 인구로 활동한다. 노트북마다 다른 풀을 쓴다. 가정
 start = 10000
@@ -233,4 +255,125 @@ custom_routine_probability = 1.0
 strength = 1.0
 reps_min = 8
 reps_max = 12
+missing_exercise_probability = 0.02
+
+# 하루 몰아 기록형(2026-11-03 사용자 결정). 낮에는 가끔 홈만 보고, 23시대에 한 세션으로 그날의 끼니·체중·운동을 몰아서
+# 기록한다. 식사 규칙은 다이어터와 같고, 끼니 창은 먹은 시각을 정하는 데만 쓴다. 숫자는 모두 가정이다
+[personas.batch]
+weight = 15
+# 낮의 홈 조회 빈도. 기록은 밤에 몰아서 하므로 낮에는 덜 연다
+activity = 0.5
+items_per_meal = 2
+grams_min = 100
+grams_max = 300
+preferred_keywords = 4
+edit_probability = 0.1
+breakfast_keywords = ["오트밀", "요거트", "바나나", "사과", "토스트", "달걀", "고구마", "우유"]
+main_keywords = ["김밥", "비빔밥", "샐러드", "닭가슴살", "된장찌개", "김치찌개", "현미밥", "두부", "샌드위치", "제육볶음"]
+
+# 몰아 기록하는 밤. 이 확률로 그날 기록한다. 창은 23:30 이전에 끝나야 한다(설정 검사)
+[personas.batch.night]
+probability = 0.95
+from = "23:00"
+to = "23:30"
+
+[personas.batch.meals.BREAKFAST]
+probability = 0.7
+from = "07:00"
+to = "09:00"
+
+[personas.batch.meals.LUNCH]
+probability = 0.95
+from = "12:00"
+to = "13:00"
+
+[personas.batch.meals.DINNER]
+probability = 0.95
+from = "18:00"
+to = "20:00"
+
+# 아침에 잰 체중을 밤에 함께 올린다
+[personas.batch.body_weight]
+probability = 0.9
+from = "07:00"
+to = "08:00"
+reference_date = "2026-10-30"
+trend_kg_per_day = -0.02
+noise_kg = 0.5
+
+# 운동은 주 3-4회 저녁에 하고 밤에 올린다. from-to는 운동을 마친 시각의 범위다
+[personas.batch.workout]
+from = "18:00"
+to = "21:00"
+weekly_target_min = 3
+weekly_target_max = 4
+routines_max = 2
+duration_minutes_min = 40
+duration_minutes_max = 60
+browse_probability = 0.2
+custom_routine_probability = 1.0
+strength = 0.8
+reps_min = 8
+reps_max = 12
+missing_exercise_probability = 0.02
+
+# 운동 숙련자(2026-11-03 사용자 결정). 주 5-6회 저녁에 루틴 운동을 기록하고 끼니마다 식사를 기록한다.
+# 하루 흐름은 다이어터와 같고 운동 요일만 주마다 정한다. 숫자는 모두 가정이다
+[personas.expert]
+weight = 9
+# 앱을 자주 연다. 상한은 0.5(가장 큰 시간대 확률) × 활동 배수 × 1.5(가장 큰 계정 배수) <= 1이라 1.33이다
+activity = 1.2
+items_per_meal = 2
+grams_min = 150
+grams_max = 350
+preferred_keywords = 4
+edit_probability = 0.1
+breakfast_keywords = ["달걀", "오트밀", "요거트", "바나나", "우유", "고구마"]
+main_keywords = ["닭가슴살", "현미밥", "두부", "샐러드", "제육볶음", "비빔밥", "김밥", "된장찌개"]
+
+[personas.expert.meals.BREAKFAST]
+probability = 0.9
+from = "06:00"
+to = "09:00"
+
+[personas.expert.meals.LUNCH]
+probability = 0.95
+from = "11:00"
+to = "14:00"
+
+[personas.expert.meals.DINNER]
+probability = 0.95
+from = "17:00"
+to = "20:00"
+
+# 운동 뒤 단백질 간식
+[personas.expert.meals.SNACK]
+probability = 0.5
+from = "14:00"
+to = "17:00"
+
+[personas.expert.body_weight]
+probability = 0.3
+from = "06:00"
+to = "10:00"
+reference_date = "2026-10-30"
+trend_kg_per_day = 0.01
+noise_kg = 0.5
+
+# 운동 창. 운동하는 날 이 창의 첫 조회를 운동 기록으로 바꾸고, 조회가 없으면 창 안의 빈 시간대에 더한다
+[personas.expert.workout]
+from = "18:00"
+to = "22:00"
+weekly_target_min = 5
+weekly_target_max = 6
+# 6개 부위를 2개씩 맡는 루틴 1-3개
+routines_max = 3
+duration_minutes_min = 50
+duration_minutes_max = 90
+browse_probability = 0.1
+custom_routine_probability = 1.0
+# 운동 초보자(1.0)의 1.5-2배
+strength = 1.7
+reps_min = 5
+reps_max = 10
 missing_exercise_probability = 0.02

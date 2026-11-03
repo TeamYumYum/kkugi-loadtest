@@ -48,3 +48,29 @@ services:
       KKUGI_SCHEDULE: immediate
       KKUGI_ACCOUNT_START: "115"
       KKUGI_ACCOUNT_COUNT: "5"
+
+  worker-batch-private:
+    extra_hosts: !reset []
+    environment:
+      KKUGI_SCHEDULE: immediate
+      KKUGI_ACCOUNT_START: "120"
+      KKUGI_ACCOUNT_COUNT: "5"
+
+  worker-batch-public:
+    environment:
+      KKUGI_SCHEDULE: immediate
+      KKUGI_ACCOUNT_START: "125"
+      KKUGI_ACCOUNT_COUNT: "5"
+
+  worker-expert-private:
+    extra_hosts: !reset []
+    environment:
+      KKUGI_SCHEDULE: immediate
+      KKUGI_ACCOUNT_START: "130"
+      KKUGI_ACCOUNT_COUNT: "5"
+
+  worker-expert-public:
+    environment:
+      KKUGI_SCHEDULE: immediate
+      KKUGI_ACCOUNT_START: "135"
+      KKUGI_ACCOUNT_COUNT: "5"
