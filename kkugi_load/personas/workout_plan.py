@@ -1,9 +1,9 @@
-"""다이어터와 운동 초보자가 공유하는 운동 입력 생성기. 기존 난수 태그와 순서를 유지한다."""
+"""여러 페르소나가 공유하는 운동 입력 생성기와 주간 운동 일정. 기존 난수 태그와 순서를 유지한다."""
 
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 
 from kkugi_load.accounts.identity import Account, seeded_uniforms
-from kkugi_load.config import Config
+from kkugi_load.config import Config, hhmm
 from kkugi_load.sessions.workout import (
     BODY_PARTS, EXERCISES_PER_ROUTINE, FEMALE_STRENGTH, MISSING_EXERCISES, PARTS_PER_WORKOUT, POOL_SEEDS_PER_PART,
     SETS_PER_EXERCISE, WorkoutInputs,
@@ -65,3 +65,18 @@ def pick_parts(uniforms: tuple[float, ...]) -> tuple[str, ...]:
         j = i + int(x * (len(pool) - i))
         pool[i], pool[j] = pool[j], pool[i]
     return tuple(pool[:len(uniforms)])
+
+
+def weekly_days(config: Config, index: int, day: date, target: int, tag: str) -> list[int]:
+    """그 주(월요일 시작)에 운동할 요일(월=0) target개. 같은 계정·주면 매일 다시 계산해도 같다."""
+    monday = day - timedelta(days=day.weekday())
+    order = seeded_uniforms(config.seed, tag, index, monday.isoformat(), count=7)
+    return sorted(range(7), key=lambda d: order[d])[:target]
+
+
+def window_time(config: Config, index: int, day: date, start: str, end: str, tag: str) -> datetime:
+    """start-end 창 안에서 계정·날짜로 정한 분. 한국 시간이 붙는다."""
+    (u,) = seeded_uniforms(config.seed, tag, index, day.isoformat())
+    lower, upper = hhmm(start), hhmm(end)
+    low, high = lower.hour * 60 + lower.minute, upper.hour * 60 + upper.minute
+    return datetime.combine(day, time(), config.tz) + timedelta(minutes=low + int(u * (high - low)))
