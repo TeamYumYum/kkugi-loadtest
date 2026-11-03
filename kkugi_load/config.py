@@ -280,13 +280,20 @@ def loads(text: str, env: dict[str, str] | None = None) -> Config:
     )
     if pool.persona is not None and pool.persona not in personas:
         raise ValueError(f"계정 풀 {pool_name}에 설정한 페르소나가 없음: {pool.persona}")
-    if "beginner" in personas:
-        workout = personas["beginner"]["workout"]
+    for persona_name, settings in personas.items():
+        workout = settings.get("workout")
+        if workout is None:
+            continue
         low, high = workout["weekly_target_min"], workout["weekly_target_max"]
         if type(low) is not int or type(high) is not int or not 1 <= low <= high <= 7:
-            raise ValueError("운동 초보자의 주간 목표는 1~7 정수여야 한다")
+            raise ValueError(f"{persona_name}의 주간 목표는 1~7 정수여야 한다")
         if not hhmm(workout["from"]) < hhmm(workout["to"]):
-            raise ValueError("운동 초보자의 운동 창은 from이 to보다 빨라야 한다")
+            raise ValueError(f"{persona_name}의 운동 창은 from이 to보다 빨라야 한다")
+    if "night" in personas.get("batch", {}):
+        night = personas["batch"]["night"]
+        # 몰아 기록 세션이 자정을 넘기면 서버가 어제 시각의 식사를 받지 않는다. 늦게 시작해도 넘지 않게 여유를 둔다
+        if not hhmm(night["from"]) < hhmm(night["to"]) <= hhmm("23:30"):
+            raise ValueError("하루 몰아 기록형의 몰아 기록 창은 from < to <= 23:30이어야 한다")
     if pool.start < 0 or pool.count < 1:
         raise ValueError(f"계정 풀 {pool_name}의 범위가 잘못됨: start={pool.start}, count={pool.count}")
     # 기본값으로 채우지 않는다. 빠지면 시작 배율을 모르는 채로 실행하게 된다

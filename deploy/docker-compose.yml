@@ -1,4 +1,4 @@
-# 관측 서버에 띄우는 인공 트래픽 발생기. Master 하나와 상시 Worker 넷이다.
+# 관측 서버에 띄우는 인공 트래픽 발생기. Master 하나와 상시 Worker 여덟이다(페르소나 넷 × 프라이빗·공인 경로).
 #
 #   master          통계 집계, 계정 범위 확인, 웹 UI와 조절 경로(/kkugi/*), 거버너. 세션은 실행하지 않는다
 #   worker-private  계정 풀 base. 도메인을 앱 서버 프라이빗 IP로 매핑해 프라이빗 경로로 보낸다
@@ -133,6 +133,37 @@ services:
       KKUGI_POOL: beginner-public
       KKUGI_ROUTE: public
       KKUGI_STATE_DB: /app/state/beginner-public.db
+
+  # 4,000명 단계(2026-11-03): 하루 몰아 기록형과 운동 숙련자. 설정은 위 Worker와 같고 계정 풀과 상태 DB만 다르다
+  worker-batch-private:
+    <<: *private-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: batch-private
+      KKUGI_STATE_DB: /app/state/batch-private.db
+
+  worker-batch-public:
+    <<: *public-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: batch-public
+      KKUGI_ROUTE: public
+      KKUGI_STATE_DB: /app/state/batch-public.db
+
+  worker-expert-private:
+    <<: *private-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: expert-private
+      KKUGI_STATE_DB: /app/state/expert-private.db
+
+  worker-expert-public:
+    <<: *public-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: expert-public
+      KKUGI_ROUTE: public
+      KKUGI_STATE_DB: /app/state/expert-public.db
 
 volumes:
   # Worker별 상태 DB 파일. 기존 base.db, public.db는 그대로 유지한다.

@@ -47,6 +47,16 @@ def session_seconds(config: Config, session: str) -> float:
         # 운동 자체는 세션 밖이다(끝난 기록을 올린다). 종목 둘러보기와 주간 일정 고르기의 생각 시간을 한 번씩 넉넉히 잡고,
         # 요청이 열 건 안팎이라 요청 시간을 두 배로 둔다
         return _mean(config.search_think) + _mean(config.select_think) + 2 * REQUEST_SECONDS
+    if session == "batch_log":
+        # 하루 몰아 기록형이 밤에 한 번 여는 세션. 끼니·체중·운동 세션을 이어서 실행하므로 각 기대 횟수만큼 더한다
+        batch = config.personas["batch"]
+        meals = sum(float(meal["probability"]) for meal in batch["meals"].values())
+        workouts = _mean((batch["workout"]["weekly_target_min"], batch["workout"]["weekly_target_max"])) / 7
+        return (
+            meals * session_seconds(config, "meal_log")
+            + float(batch["body_weight"]["probability"]) * session_seconds(config, "weight_log")
+            + workouts * session_seconds(config, "workout")
+        )
     raise ValueError(f"평균 길이를 모르는 세션 종류: {session}")
 
 

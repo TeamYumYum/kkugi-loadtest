@@ -31,6 +31,13 @@ def _with_table(values: list[float]) -> str:
     return text
 
 
+def _all_activity_one(text: str) -> str:
+    """모든 페르소나의 activity를 1.0으로 둔다. 계정 배수 2.0을 넣어도 상한(1)에 걸리지 않게 할 때 쓴다."""
+    text, n = re.subn(r"^activity = .*$", "activity = 1.0", text, flags=re.M)
+    assert n >= 2
+    return text
+
+
 def _with_multipliers(value: str) -> str:
     text, n = re.subn(r"^activity_multipliers = .*$", f"activity_multipliers = {value}", DEFAULT_TEXT,
                       count=1, flags=re.M)
@@ -93,7 +100,7 @@ def test_weighted_mean_multiplier_must_be_one(tmp_path):
     with pytest.raises(ValueError, match="평균"):
         _load_with(tmp_path, _with_multipliers("[[0.5, 1], [1.0, 1], [1.5, 2]]"))
     # 비중이 달라도 가중 평균이 1이면 통과한다
-    config = _load_with(tmp_path, _with_multipliers("[[0.5, 2], [2.0, 1]]"))
+    config = _load_with(tmp_path, _all_activity_one(_with_multipliers("[[0.5, 2], [2.0, 1]]")))
     assert config.activity_multipliers == ((0.5, 2.0), (2.0, 1.0))
 
 
@@ -125,7 +132,7 @@ def test_peak_probability_times_multipliers_must_not_exceed_one(tmp_path):
     with pytest.raises(ValueError, match="1을 넘는다"):
         _load_with(tmp_path, _with_activity("activity = 1.5\n"))
     # 0.5 × 1.0 × 2.0 = 1.0은 허용한다
-    config = _load_with(tmp_path, _with_multipliers("[[0.5, 2], [2.0, 1]]"))
+    config = _load_with(tmp_path, _all_activity_one(_with_multipliers("[[0.5, 2], [2.0, 1]]")))
     assert max(config.open_probability) * max(m for m, _ in config.activity_multipliers) == 1.0
 
 

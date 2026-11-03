@@ -101,7 +101,7 @@ class WorkoutInputs:
 
     planned_at: 운동을 마친 시각(세션을 여는 시각). 업로드의 endedAt이 된다
     weekly_target: 주간 목표 횟수(1-7). 처음 목표를 정할 때와 일정 예약 수에 쓴다
-    routine_count: 처음 만들 루틴 수(1-2). 루틴이 이미 있으면 쓰지 않는다
+    routine_count: 처음 만들 루틴 수(1-3). 루틴마다 겹치지 않는 부위 2개를 맡는다. 루틴이 이미 있으면 쓰지 않는다
     routine_seeds: 루틴을 만들 때 쓰는 0 이상 1 미만의 값. 앞에서부터 루틴마다 맡을 부위를 고른다. 모자라면 돌려 쓴다
     routine_pick: 오늘 일정이 없을 때 고를 루틴의 순번 기준값. 루틴 수로 나눈 나머지를 쓴다
     browse_body_part: 종목 둘러보기 부위(LOWER_BODY, BACK, CHEST, SHOULDER, ARM, CORE). None이면 둘러보지 않는다

@@ -74,7 +74,7 @@ class Dieter(Persona):
                 if session is not None:
                     planned.append(session)
                     continue
-            planned.append(PlannedSession(account.index, "dieter_view", at, "view", ViewInputs(planned_at=at)))
+            planned.append(PlannedSession(account.index, f"{self.name}_view", at, "view", ViewInputs(planned_at=at)))
         return planned
 
     def _plan_weight(self, config: Config, account: Account, day: date, at: datetime) -> PlannedSession | None:
@@ -91,7 +91,7 @@ class Dieter(Persona):
             account.profile.body.weight_kg, days, float(weight["trend_kg_per_day"]),
             (2 * noise - 1) * float(weight["noise_kg"]),
         )
-        return PlannedSession(account.index, "dieter_weight", at, "weight_log", WeightInputs(planned_at=at, weight_kg=kg))
+        return PlannedSession(account.index, f"{self.name}_weight", at, "weight_log", WeightInputs(planned_at=at, weight_kg=kg))
 
     def _plan_workout(self, config: Config, account: Account, day: date, at: datetime) -> PlannedSession | None:
         """운동 창의 첫 조회 세션을 운동 기록으로 할지 정한다. 기록하지 않으면 None.
@@ -101,10 +101,17 @@ class Dieter(Persona):
         오늘 할 부위, 자유 운동 종목, 못 찾는 검색은 날짜마다 정한다.
         """
         inputs = workout_inputs(config, account, day, at)
-        return PlannedSession(account.index, "dieter_workout", at, "workout", inputs) if inputs is not None else None
+        return PlannedSession(account.index, f"{self.name}_workout", at, "workout", inputs) if inputs is not None else None
 
     def _plan_meal(self, config: Config, account: Account, day: date, meal_type: str, at: datetime) -> PlannedSession | None:
-        """끼니 창의 첫 세션을 식사 기록으로 할지 정한다. 기록하지 않으면 None.
+        """끼니 창의 첫 세션을 식사 기록으로 할지 정한다. 기록하지 않으면 None."""
+        inputs = self.meal_inputs(config, account, day, meal_type, at)
+        if inputs is None:
+            return None
+        return PlannedSession(account.index, f"{self.name}_{meal_type.lower()}", at, "meal_log", inputs)
+
+    def meal_inputs(self, config: Config, account: Account, day: date, meal_type: str, at: datetime) -> MealInputs | None:
+        """그 끼니를 at에 먹은 것으로 기록할 입력. 끼니의 probability로 기록하지 않기로 하면 None.
 
         값은 끼니마다 해시로 따로 정한다. 다른 시간대의 결과가 바뀌어도 이 끼니의 기록 여부와 입력값은 그대로다.
         계정 2만 개면 하루 4만 번 넘게 부르므로 random.Random을 만들지 않는다(open_times와 같은 이유).
@@ -122,7 +129,7 @@ class Dieter(Persona):
         keywords = _sample(pool, u[1:1 + items])
         grams_min, grams_max = int(settings["grams_min"]), int(settings["grams_max"])
         grams = tuple(grams_min + int(x * (grams_max - grams_min + 1)) for x in u[1 + items:1 + 2 * items])
-        inputs = MealInputs(
+        return MealInputs(
             meal_type=meal_type,
             planned_at=at,
             keywords=keywords,
@@ -132,7 +139,6 @@ class Dieter(Persona):
             picks=tuple(int(x * 1000) for x in u[1 + 2 * items:1 + 3 * items]),
             edit_grams=_edit_grams(grams, u[1 + 3 * items:], float(settings["edit_probability"])),
         )
-        return PlannedSession(account.index, f"dieter_{meal_type.lower()}", at, "meal_log", inputs)
 
 
 def _edit_grams(grams: tuple[int, ...], u: tuple[float, ...], probability: float) -> tuple[int, ...] | None:
