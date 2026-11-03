@@ -2,9 +2,12 @@
 
     python tools/stats_summary.py hourly <prefix>_stats_history.csv [--from 'YYYY-mm-dd HH:MM'] [--to ...]
     python tools/stats_summary.py apis <prefix>_stats.csv
+    python tools/stats_summary.py apis <prefix>_stats_history.csv [--to 'YYYY-mm-dd HH:MM']
 
 hourly: 시(KST)별 TPS(HTTP 요청/s)와 세션/s. 이름별 누적 요청 수의 증가분을 경과 초로 나눈다.
 apis: API별 요청 수, 실패, 평균·p50·p95·p99·최대(ms), 평균 응답 크기. 이어서 세션·일정 통계.
+history CSV를 주면 --to 시각 이전 마지막 기록의 누적값을 쓴다. 이 기록에는 누적 백분위가 없어 p50 자리에 누적 중앙값을,
+p95·p99 자리에 '-'를 적는다.
 측정 방법과 용어는 notes/decisions/2026-11-02-baseline-1000.md를 따른다.
 """
 
@@ -64,9 +67,31 @@ def hourly(path: str, start: int | None, end: int | None) -> None:
               f"세션/s {(last[1][1] - first[1][1]) / seconds:.3f}")
 
 
-def apis(path: str) -> None:
+def _history_rows(path: str, end: int | None) -> list[dict[str, str]]:
+    """history CSV에서 이름마다 end 이전 마지막 기록의 누적값을 _stats.csv와 같은 열 이름으로 돌려준다."""
+    last: dict[str, dict[str, str]] = {}
     with open(path, encoding="utf-8") as f:
-        rows = [r for r in csv.DictReader(f) if r["Name"] != "Aggregated"]
+        for r in csv.DictReader(f):
+            if r["Name"] != "Aggregated" and (end is None or int(r["Timestamp"]) <= end):
+                last[r["Name"]] = r
+    return [{
+        "Type": r["Type"], "Name": r["Name"], "Request Count": r["Total Request Count"],
+        "Failure Count": r["Total Failure Count"], "Average Response Time": r["Total Average Response Time"],
+        "50%": r["Total Median Response Time"], "95%": "-", "99%": "-",
+        "Max Response Time": r["Total Max Response Time"], "Average Content Size": r["Total Average Content Size"],
+    } for r in last.values()]
+
+
+def apis(path: str, end: int | None = None) -> None:
+    with open(path, encoding="utf-8") as f:
+        history = "Timestamp" in (f.readline())
+    if history:
+        rows = _history_rows(path, end)
+    else:
+        if end is not None:
+            raise SystemExit("--to는 history CSV에만 쓸 수 있다. _stats.csv는 지금까지의 누적값이다")
+        with open(path, encoding="utf-8") as f:
+            rows = [r for r in csv.DictReader(f) if r["Name"] != "Aggregated"]
     http = sorted((r for r in rows if r["Type"] not in NON_HTTP), key=lambda r: -int(r["Request Count"]))
     print("| API | 요청 수 | 실패 | 평균 | p50 | p95 | p99 | 최대 | 응답 크기(B) |")
     print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
@@ -95,11 +120,12 @@ def main() -> None:
     h.add_argument("--to", dest="end")
     a = sub.add_parser("apis")
     a.add_argument("stats")
+    a.add_argument("--to", dest="end")
     args = parser.parse_args()
     if args.command == "hourly":
         hourly(args.history, _kst(args.start), _kst(args.end))
     else:
-        apis(args.stats)
+        apis(args.stats, _kst(args.end))
 
 
 if __name__ == "__main__":
