@@ -1,0 +1,89 @@
+# 용어집
+
+이 저장소의 문서, 측정 기록, 통계에서 쓰는 용어다. 본문에서는 용어를 풀어 쓰지 않고 그대로 쓰며, 뜻은 여기서 찾는다.
+용어를 새로 만들거나 뜻이 바뀌면 이 파일을 함께 고친다. 자세한 동작은 각 항목이 가리키는 문서에 있다.
+
+## 구조
+
+꾸기는 식단·운동 기록 앱이다. 이 저장소(`kkugi-loadtest`)는 인공 계정으로 꾸기 운영 서버에 요청을 보내는 트래픽 발생기다.
+
+```text
+관측 서버 (kkugi-observability-lightsail, ssh kkugi-obs)      앱 서버 (kkugi-backend-lightsail)
+ ├─ Master: 통계 집계, 계정 범위 확인, 조절 경로, 거버너          ├─ nginx → backend (Spring)
+ ├─ Worker 4개: 풀마다 하나, 세션 실행 ─────────────────────────▶ └─ MySQL
+ └─ Prometheus·Grafana·Tempo·Loki: 지표·추적·로그 수집
+```
+
+| 용어 | 뜻 |
+|---|---|
+| 앱 서버 | 꾸기 backend와 MySQL이 도는 Lightsail 서버 `kkugi-backend-lightsail` |
+| 관측 서버 | 발생기와 Prometheus·Grafana가 도는 Lightsail 서버 `kkugi-observability-lightsail`. 접속은 `ssh kkugi-obs` |
+| backend | 꾸기 API 서버(Spring). 서비스 저장소가 따로 있다 |
+| 발생기 | 이 저장소의 인공 트래픽 발생기. Locust로 만들었다 |
+| Locust | 파이썬 부하 테스트 도구. 발생기의 실행과 통계 집계를 맡는다 |
+| Master | Locust 제어 프로세스. Worker의 통계를 모으고, 웹 UI와 조절 경로(`/kkugi/*`)를 연다. 세션은 실행하지 않는다 |
+| Worker | 실제로 세션을 실행하는 Locust 프로세스. 풀 하나를 맡는다. 상시 Worker는 4개다 |
+| 실행기 (Locust User) | Worker 안에서 세션을 하나씩 꺼내 실행하는 슬롯. 실행기 수가 동시에 진행할 수 있는 세션 수이고 계정 수와 다르다. `KKUGI_USERS`로 정한다 |
+| 풀 (계정 풀) | Worker 하나가 맡는 계정 번호 구간과 그 페르소나. `config/default.toml`의 `[pools.*]` |
+| 프라이빗 경로 | 같은 도메인을 앱 서버 내부 IP로 해석해 보내는 경로. 각 페르소나 계정의 95% |
+| 공인 경로 | 같은 도메인을 인터넷 주소로 보내는 경로. 각 페르소나 계정의 5%. 통계 이름에 `[public]`이 붙는다 |
+| `peak-*` 풀 | 팀원 노트북 Worker가 피크 실험 때 쓰는 풀 |
+
+## 계정과 행동
+
+| 용어 | 뜻 |
+|---|---|
+| 계정 | 인공 회원 하나. 이메일은 `lt-<번호>@synthetic.kkugi.test`이고, 계정 번호마다 페르소나와 프로필이 정해져 있다 |
+| generation | 계정이 바깥에서 탈퇴되어 새 회원으로 다시 만든 횟수. 이메일 번호 = `generation × 1,000,000 + 계정 번호` |
+| 페르소나 | 계정의 행동 유형. 지금은 다이어터(`dieter`)와 운동 초보자(`beginner`). 행동 규칙은 [페르소나 문서](personas/) |
+| 세션 | 앱을 한 번 열어서 하는 일. 예: 저녁 식사 기록 한 번. HTTP 요청 여러 개와 생각 시간을 포함한다. 종류는 식사 기록, 조회, 체중 기록, 운동 기록 |
+| 생각 시간 | 세션 안에서 사람이 검색하고 고르는 시간을 흉내 낸 대기. 그래서 식사 기록 세션은 10초 넘게 걸린다 |
+| 일정 | 계정마다 하루 동안 앱을 열 시각과 세션을 미리 정한 목록. 같은 계정·날짜면 다시 만들어도 같다 |
+| 시간대별 확률표 | 계정 하나가 각 시간대에 앱을 열 확률 24칸(`open_probability`). 계정 수 × 확률이 그 시간의 세션 수 기대값이다 |
+| 활동 배수 | 계정이나 페르소나마다 확률표에 곱하는 값. 부지런한 계정과 뜸한 계정을 나눈다 |
+| 배율 | 일정의 세션 중 실제로 실행할 비율(0-1). 세션마다 계정·날짜·시간대로 정해지는 값과 비교하므로 같은 세션이 일관되게 남거나 빠진다. `/kkugi/scale`로 바꾼다 |
+| 거버너 | Master가 최근 5분의 실패율과 p99를 보고 기준을 넘으면 배율을 스스로 낮추는 장치. 기준은 실패율 2%, p99 3,000ms |
+| 인공 요청 | 발생기가 보낸 요청. 모든 요청에 `X-Synthetic-Traffic: 1` 헤더가 붙고, backend 지표에서 `synthetic="true"`로 구분된다 |
+
+## 통계 이름
+
+Locust 통계와 CSV에 남는 이름이다. 자세한 표는 README의 "통계 읽는 법"에 있다.
+
+| 이름 | 뜻 |
+|---|---|
+| `GET /...`, `POST /...` | 세션 안의 HTTP 요청. 경로의 식별자는 `{date}`처럼 템플릿으로 남긴다 |
+| `[auth] ...` | 로그인과 토큰 재발급 |
+| `[setup] ...` | 첫 사용 때 한 번 하는 준비 요청. 온보딩, 루틴 생성, 주간 목표 설정, 루틴용 종목 목록 |
+| `[public] ...` | 공인 경로로 보낸 요청 |
+| `SESSION <세션 이름>` | 세션 하나의 성공·실패와 걸린 시간. 결과 검증 실패도 실패로 센다. 시간은 로그인·온보딩이 끝난 뒤부터 잰다 |
+| `SESSION ... (skipped)` | 이미 기록한 끼니라 저장하지 않고 끝낸 세션 |
+| `SCHEDULE start_delay` | 세션이 계획 시각보다 늦게 시작한 정도(시작 지연). 실행기가 모자라면 늘어난다 |
+| `SCHEDULE missed` | 계획 시각보다 30분(`max_lateness_minutes`) 넘게 늦어 실행하지 않은 세션(놓친 세션). 실패로 센다 |
+| `SCHEDULE scaled_out` | 배율로 걸러 실행하지 않은 세션. 실패가 아니다 |
+| `ACCOUNT withdrawn` | 계정이 바깥에서 탈퇴되어 세션을 끝낸 경우. 실패가 아니다 |
+
+## 측정 지표
+
+| 용어 | 뜻 |
+|---|---|
+| TPS (= RPS) | 초당 HTTP 요청 수. 로그인·토큰 재발급·온보딩을 포함한다. TPS라고만 쓰면 이 뜻이다 |
+| 세션/s | 초당 끝난 세션 수. 업무 처리량으로 본다. `(skipped)`는 뺀다 |
+| DB TPS | 초당 MySQL 커밋 수(`mysql_global_status_commands_total{command="commit"}`). backend 전체 기준이라 인공 요청이 아닌 작업도 들어간다 |
+| p50, p95, p99 | 응답 시간을 빠른 순으로 줄 세웠을 때 50%, 95%, 99% 지점의 값. p95가 150ms면 요청 100개 중 95개가 150ms 안에 끝났다 |
+| 클라이언트 기준 | 발생기(Locust)가 잰 응답 시간. 네트워크와 TLS 연결 시간이 들어 있다 |
+| 서버 기준 | backend가 잰 처리 시간(`http_server_requests_seconds`). 네트워크 시간이 빠져 클라이언트 기준보다 조금 작다 |
+| 기준선 | 개선 전후를 비교하려고 남긴 측정 기록. `notes/decisions/`의 `*-baseline-*.md` |
+| 자정 급증 | 매일 00:01-00:02에 HTTP 요청은 그대로인데 DB TPS가 1분 기준 수십으로 오르는 현상. backend 배치 작업으로 추정한다(확인 필요) |
+
+## 서버와 인프라
+
+| 용어 | 뜻 |
+|---|---|
+| Lightsail | 앱 서버와 관측 서버가 있는 AWS 가상 서버 서비스 |
+| 버스트 | Lightsail 서버는 평소 CPU의 일부만 보장하고, 남는 몫을 크레딧으로 모아 바쁠 때 쓴다. 남은 양은 `BurstCapacityPercentage`(%)와 `BurstCapacityTime`(초)로 보고, 0이 되면 CPU가 제한된다 |
+| Prometheus | 관측 서버의 지표 저장소(`localhost:9090`). backend·MySQL 지표를 모은다. 보존 기간은 2주다 |
+| Grafana | Prometheus 지표를 보는 대시보드 |
+| JVM CPU | backend 프로세스의 CPU 사용률(`process_cpu_usage`). 서버 전체 CPU와 다르다 |
+| 힙 | JVM이 객체를 두는 메모리(`jvm_memory_used_bytes{area="heap"}`) |
+| GC 정지 | JVM이 메모리를 정리하느라 요청 처리를 멈춘 시간(`jvm_gc_pause_seconds`) |
+| Hikari (커넥션 풀) | backend가 MySQL 연결을 미리 열어 두고 빌려 쓰는 풀. 지금 크기는 10. 대기(`pending`)가 생기면 DB 연결이 병목이다 |
