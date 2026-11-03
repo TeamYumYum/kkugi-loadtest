@@ -117,6 +117,7 @@ python -m venv .venv
 | `kkugi_load/client/api.py` | backend 호출, 응답 해석, 토큰 재발급 |
 | `kkugi_load/distributed.py` | Master가 Worker들의 계정 범위가 겹치지 않는지 확인합니다 |
 | `kkugi_load/capacity.py` | 하루 일정에서 필요한 실행기(User) 수를 추정합니다 |
+| `tools/stats_summary.py` | Master가 남긴 통계 CSV를 시간대별 TPS·세션/s 표와 API별 응답 시간 표로 요약합니다. 측정 기록(`notes/decisions/`의 기준선)을 같은 방법으로 다시 잴 때 씁니다 |
 | `config/default.toml` | 시간대별 확률표, 활동 배수, 계정 풀, 페르소나 행동, 생각 시간 등 설정. "가정"으로 표시한 값은 확정 사양이 아닙니다 |
 
 새 페르소나는 `personas/`에 파일을 만들고 `personas/__init__.py`에 등록한 뒤, 설정에 `[personas.<이름>]`을 더합니다. 새 세션 종류는 `sessions/`에 만들고 `runner.py`의 `SESSIONS`에 등록합니다.
