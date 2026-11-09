@@ -13,7 +13,8 @@ Grafana의 5xx 경보와 겹치므로 여기서 보내지 않고, 하루 요약�
 
 규칙마다 조건이 for_minutes 동안 이어지면 [경보]를 한 번 보내고, 조건이 풀리면 [해소]를 한 번 보낸다. 같은 경보를 매분
 다시 보내지 않는다. 상태는 메모리에만 있으므로 감시가 다시 시작되면 아직 이어지는 경보를 한 번 더 보낸다.
-감시 자체가 죽었는지 알 수 있게 시작할 때와 매일 HEARTBEAT_HOUR시에 "동작 중"을 보낸다. --stats-dir를 주면 매일의
+감시 자체가 죽었는지 알 수 있게 매일 HEARTBEAT_HOUR시에 "동작 중"을 보낸다. 이 메시지가 오지 않으면 감시가 죽은 것이다.
+시작 알림은 로그에만 남긴다. 받아도 할 일이 없고 발생기를 배포할 때마다 오기 때문이다. --stats-dir를 주면 매일의
 메시지 하나에 전날의 하루 요약(tools/daily_report.py)을 함께 담는다. 통계 파일은 --stats-dir에서 가장 최근의
 *_stats_history.csv를 쓰고, 요약 JSON을 --reports-dir에 날짜별로 남겨 다음 날 비교에 쓴다.
 """
@@ -190,7 +191,8 @@ def main(argv: list[str] | None = None, *, env: dict | None = None, fetch: Fetch
         print(f"[{now():%Y-%m-%d %H:%M:%S}] {text}", flush=True)
 
     watch = Watch(webhook_poster(url, post, log))
-    watch.post(f"발생기 경보 감시 시작 ({now():%m-%d %H:%M}). 규칙 {len(watch.rules)}개, {INTERVAL_SECONDS}초마다 본다")
+    # 받아도 할 일이 없는 알림이라 Mattermost로 보내지 않는다. 감시가 죽었는지는 매일 9시 메시지로 안다
+    log(f"발생기 경보 감시 시작. 거버너 배율, Worker 응답, Master 조회를 {INTERVAL_SECONDS}초마다 본다")
     done = 0
     while rounds is None or done < rounds:
         current = now()

@@ -123,8 +123,9 @@ def test_main_posts_start_and_alerts(capsys):
             fetch=_fake_fetch(failing), post=lambda u, b: posts.append((u, b)),
             sleep=lambda _s: None, now=lambda: T0, rounds=2)
     texts = [json.loads(b.decode("utf-8"))["text"] for _u, b in posts]
-    assert texts[0].startswith("발생기 경보 감시 시작")
-    assert texts[1:] == ["[경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.5로 낮췄다"]
+    # 시작 알림은 보내지 않고 로그에만 남긴다
+    assert "발생기 경보 감시 시작" in capsys.readouterr().out
+    assert texts == ["[경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.5로 낮췄다"]
     assert all(u == "https://mm.example/hooks/x" for u, _b in posts)
 
 

@@ -290,7 +290,7 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 | Master 조회 실패 | 3번 연달아 실패 |
 
 - Prometheus에 없는 발생기 상태라 Grafana로 옮기지 않습니다.
-- 감시가 죽었는지 알 수 있게, 시작할 때와 매일 9시에 "동작 중"을 보냅니다. 9시 메시지에는 전날의 하루 요약(`tools/daily_report.py`)을 함께 담아 하루 한 번만 보내고, 요약 JSON을 `reports` 볼륨에 남겨 다음 날 p95 비교에 씁니다.
+- 감시가 죽었는지 알 수 있게 매일 9시에 "동작 중"을 보냅니다. 이 메시지가 오지 않으면 감시가 죽은 것입니다. 시작 알림은 배포할 때마다 오고 할 일이 없어서 컨테이너 로그에만 남깁니다. 9시 메시지에는 전날의 하루 요약(`tools/daily_report.py`)을 함께 담아 하루 한 번만 보내고, 요약 JSON을 `reports` 볼륨에 남겨 다음 날 p95 비교에 씁니다.
 - 웹훅 주소는 서버의 `deploy/.env`에 `KKUGI_MM_WEBHOOK_URL`로 넣습니다. 비어 있으면 compose 전체가 멈춥니다. 경보 장치가 빠진 채 발생기만 도는 일을 막기 위해서입니다.
 - 감시를 다시 시작하면 아직 이어지는 경보를 한 번 더 보냅니다. 상태를 메모리에만 두기 때문입니다.
 
