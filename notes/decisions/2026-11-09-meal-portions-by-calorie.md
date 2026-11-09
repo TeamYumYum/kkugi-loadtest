@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | 날짜 | 2026-11-09 |
-| 상태 | 결정 |
+| 상태 | 일부 대체됨(하루 섭취 비율 → [2026-11-09-intake-adherence-groups](2026-11-09-intake-adherence-groups.md)) |
 | 관련 | [4,000명 주말 기준선](2026-11-09-baseline-4000-weekend.md)의 DB 적재 확인, [다이어터 문서](../../docs/personas/dieter.md) |
 
 ## 배경

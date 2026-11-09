@@ -3,7 +3,7 @@
 import math
 from collections import Counter
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -216,35 +216,61 @@ def test_evening_workout_follows_weekly_target(plans):
 
 
 def test_day_intake_is_split_over_logged_meals(plans):
-    """그날 식사 칼로리 몫의 합은 하루 섭취 비율이다. 기록하는 끼니 몫이 coverage_min보다 작은 날만 그 비율만큼 덜 먹는다."""
-    settings = CONFIG.personas["dieter"]
-    low, high = float(settings["intake_ratio_min"]), float(settings["intake_ratio_max"])
-    spread, floor = float(settings["intake_ratio_spread"]), float(settings["coverage_min"])
+    """그날 기록하는 식사 칼로리 몫의 합은 끼니 수와 관계없이 하루 섭취 비율이다."""
     for index, plan in enumerate(plans[:2000]):
         meals = [p.inputs for p in plan if p.session == "meal_log"]
         if not meals:
             continue
         ratio = DIETER.intake_ratio(CONFIG, build_account(CONFIG, index), DAY)
-        assert low - spread <= ratio <= high + spread
-        covered = sum(float(settings["meals"][m.meal_type]["share"]) for m in meals)
-        expected = ratio * min(1.0, covered / floor)
-        assert abs(sum(m.kcal_share for m in meals) - expected) < 1e-9
+        assert abs(sum(m.kcal_share for m in meals) - ratio) < 1e-9
 
 
-def test_intake_mean_is_fixed_per_account():
-    """계정 평균은 날짜와 관계없다. 날마다 달라지는 폭은 spread의 두 배를 넘지 않는다."""
-    spread = float(CONFIG.personas["dieter"]["intake_ratio_spread"])
-    for index in range(200):
+def test_half_keep_the_goal_90_percent_and_half_60_percent():
+    """계정의 무리는 고정이고 비중은 절반씩이다. 무리마다 목표를 지키는 날의 비율이 achieve에 가깝다."""
+    intake = CONFIG.personas["dieter"]["intake"]
+    low, high = intake["achieved_ratio"]
+    days = [date(2026, 11, 1) + timedelta(days=d) for d in range(30)]
+    kept = {0.9: [0, 0], 0.6: [0, 0]}
+    for index in range(1000):
         account = build_account(CONFIG, index)
-        ratios = [DIETER.intake_ratio(CONFIG, account, date(2026, 11, d)) for d in range(1, 15)]
-        assert ratios == [DIETER.intake_ratio(CONFIG, account, date(2026, 11, d)) for d in range(1, 15)]
-        assert max(ratios) - min(ratios) <= 2 * spread + 1e-9
+        achieve = DIETER.adherence(CONFIG, account)
+        assert achieve == DIETER.adherence(CONFIG, account)
+        for day in days:
+            ratio = DIETER.intake_ratio(CONFIG, account, day)
+            assert ratio == DIETER.intake_ratio(CONFIG, account, day)
+            kept[achieve][0] += low <= ratio <= high
+            kept[achieve][1] += 1
+    accounts = {a: n / len(days) for a, (_, n) in kept.items()}
+    assert abs(accounts[0.9] - 500) <= _tolerance(1000, 0.5)
+    for achieve, (hit, n) in kept.items():
+        assert abs(hit - n * achieve) <= _tolerance(n, achieve), (achieve, hit / n)
+
+
+def test_missed_days_are_outside_the_judged_range():
+    """못 지키는 날은 서버의 달성 범위(0.9-1.1) 밖이고, missed_over 비율만큼 많이 먹는다."""
+    intake = CONFIG.personas["dieter"]["intake"]
+    over = under = 0
+    for index in range(500):
+        account = build_account(CONFIG, index)
+        for d in range(30):
+            ratio = DIETER.intake_ratio(CONFIG, account, date(2026, 11, 1) + timedelta(days=d))
+            if 0.9 <= ratio <= 1.1:
+                assert intake["achieved_ratio"][0] <= ratio <= intake["achieved_ratio"][1]
+            elif ratio > 1.1:
+                over += 1
+            else:
+                under += 1
+    p = float(intake["missed_over"])
+    assert abs(over - (over + under) * p) <= _tolerance(over + under, p)
 
 
 @pytest.mark.parametrize("change, message", [
-    ({"coverage_min": 0}, "coverage_min"),
-    ({"intake_ratio_min": 1.2, "intake_ratio_max": 1.0}, "intake_ratio"),
-    ({"intake_ratio_spread": -0.1}, "intake_ratio_spread"),
+    ({"adherence_groups": []}, "adherence_groups"),
+    ({"adherence_groups": [{"weight": 1, "achieve": 1.5}]}, "adherence_groups"),
+    ({"intake": {"achieved_ratio": [0.85, 1.0], "missed_low": [0.6, 0.85], "missed_high": [1.15, 1.4],
+                 "missed_over": 0.3}}, "achieved_ratio"),
+    ({"intake": {"achieved_ratio": [0.93, 1.07], "missed_low": [0.6, 0.95], "missed_high": [1.15, 1.4],
+                 "missed_over": 0.3}}, "missed_low"),
 ])
 def test_intake_settings_are_validated(change, message):
     from kkugi_load.config import read_intake

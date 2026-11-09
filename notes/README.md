@@ -63,4 +63,5 @@
 | 2026-11-03 | [4,000명 단계의 페르소나: 하루 몰아 기록형과 운동 숙련자](decisions/2026-11-03-personas-4000.md) | 일부 미결 |
 | 2026-11-05 | [상시 트래픽은 Locust로, 한계 측정은 k6로](decisions/2026-11-05-locust-over-k6.md) | 결정 |
 | 2026-11-09 | [기준선: 4,000명의 주말 이틀과 월요일 아침](decisions/2026-11-09-baseline-4000-weekend.md) | 결정 |
-| 2026-11-09 | [식사 양을 목표 칼로리로 정한다](decisions/2026-11-09-meal-portions-by-calorie.md) | 결정 |
+| 2026-11-09 | [식사 양을 목표 칼로리로 정한다](decisions/2026-11-09-meal-portions-by-calorie.md) | 일부 대체됨 |
+| 2026-11-09 | [하루 목표를 지키는 무리: 절반 90%, 절반 60%](decisions/2026-11-09-intake-adherence-groups.md) | 결정 |

@@ -231,10 +231,8 @@ def test_weekly_target_is_checked_for_every_persona_with_workouts():
 
 @pytest.mark.parametrize("pool, persona", [("batch-private", "batch"), ("expert-private", "expert")])
 def test_day_intake_is_split_over_logged_meals(pool, persona):
-    """몰아 기록형과 숙련자도 그날 식사 칼로리 몫의 합이 하루 섭취 비율(기록이 적은 날은 그만큼 덜)이다."""
+    """몰아 기록형과 숙련자도 그날 식사 칼로리 몫의 합이 끼니 수와 관계없이 하루 섭취 비율이다."""
     config, accounts = _accounts(pool)
-    settings = config.personas[persona]
-    floor = float(settings["coverage_min"])
     checked = 0
     for account in accounts:
         for day in WEEK:
@@ -245,6 +243,5 @@ def test_day_intake_is_split_over_logged_meals(pool, persona):
                 continue
             checked += 1
             ratio = PERSONAS[persona].intake_ratio(config, account, day)
-            covered = sum(float(settings["meals"][m.meal_type]["share"]) for m in meals)
-            assert abs(sum(m.kcal_share for m in meals) - ratio * min(1.0, covered / floor)) < 1e-9
+            assert abs(sum(m.kcal_share for m in meals) - ratio) < 1e-9
     assert checked > SAMPLE

@@ -3,8 +3,8 @@
 앱을 여는 시각은 공통 시간대 표가 정한다(base.open_times). 끼니 창(간식 창 포함) 안에서 그날 처음 연 세션만 그 끼니의
 probability로 식사 기록(meal_log)이 되고, 나머지는 조회(view)다. 그래서 끼니마다 식사 기록은 하루 최대 한 번이다.
 식사 기록의 일부(edit_probability)는 저장 직후 음식 하나의 양을 고친다.
-끼니의 칼로리는 그날 목표 칼로리의 비율(kcal_share)로 정한다. 하루 섭취 비율(intake_ratio_*)을 그날 기록하는 끼니의
-몫(meals.*.share)대로 나눈다(apportion).
+끼니의 칼로리는 그날 목표 칼로리의 비율(kcal_share)로 정한다. 계정의 지킬 확률(adherence_groups)로 그날 지킬지 정하고,
+그날의 섭취 비율(intake)을 기록하는 끼니의 몫(meals.*.share)대로 나눈다(apportion).
 체중 창 안의 조회 세션 중 그날 첫 번째는 body_weight.probability로 체중 기록(weight_log)이 된다. 체중 기록도 하루 최대 한 번이다.
 운동 창 안의 조회 세션 중 그날 첫 번째는 주간 목표 횟수 / 7 확률로 운동 기록(workout)이 된다. 운동 기록도 하루 최대 한 번이다.
 """
@@ -81,25 +81,44 @@ class Dieter(Persona):
             config, account, day, [p.inputs for p in planned if p.session == "meal_log"])}
         return [replace(p, inputs=shared[p.inputs.meal_type]) if p.session == "meal_log" else p for p in planned]
 
+    def adherence(self, config: Config, account: Account) -> float:
+        """계정이 하루 목표를 지킬 확률. 계정마다 adherence_groups에서 비중대로 한 무리를 고정으로 고른다."""
+        groups = config.personas[self.name]["adherence_groups"]
+        (u,) = seeded_uniforms(config.seed, "adherence", account.index)
+        total = sum(float(g["weight"]) for g in groups)
+        edge = 0.0
+        for group in groups:
+            edge += float(group["weight"]) / total
+            if u < edge:
+                return float(group["achieve"])
+        return float(groups[-1]["achieve"])
+
     def intake_ratio(self, config: Config, account: Account, day: date) -> float:
-        """그날 하루 섭취 칼로리를 목표의 비율로. 계정 평균은 날짜와 관계없이 같고, 날마다 ±spread만큼 흔들린다."""
-        settings = config.personas[self.name]
-        low, high = float(settings["intake_ratio_min"]), float(settings["intake_ratio_max"])
-        (mean_u,) = seeded_uniforms(config.seed, "intake_mean", account.index)
-        (day_u,) = seeded_uniforms(config.seed, "intake_day", account.index, day.isoformat())
-        return max(0.0, low + mean_u * (high - low) + (2 * day_u - 1) * float(settings["intake_ratio_spread"]))
+        """그날 기록할 하루 섭취 칼로리를 목표의 비율로.
+
+        계정의 지킬 확률(adherence)로 그날 지킬지 정한다. 지키는 날은 achieved_ratio 범위, 못 지키는 날은 missed_over
+        확률로 missed_high(많이 먹음), 나머지는 missed_low(적게 먹음) 범위에서 고른다. 서버는 0.9-1.1을 달성으로 본다.
+        """
+        intake = config.personas[self.name]["intake"]
+        keep, over, where = seeded_uniforms(config.seed, "intake_day", account.index, day.isoformat(), count=3)
+        if keep < self.adherence(config, account):
+            low, high = intake["achieved_ratio"]
+        elif over < float(intake["missed_over"]):
+            low, high = intake["missed_high"]
+        else:
+            low, high = intake["missed_low"]
+        return float(low) + where * (float(high) - float(low))
 
     def apportion(self, config: Config, account: Account, day: date, meals: list[MealInputs]) -> list[MealInputs]:
         """그날 기록할 끼니들에 하루 섭취 비율을 끼니 몫대로 나눠 kcal_share를 채운다.
 
-        몫의 합이 coverage_min 이상이면 하루 섭취가 정확히 intake_ratio다. 아침을 걸러도 다른 끼니를 더 먹는다고 본다.
-        그보다 작으면 coverage_min으로 나누므로, 한 끼만 기록한 날은 목표보다 덜 먹은 날이 된다.
+        기록하는 끼니의 몫 합으로 나누므로, 몇 끼를 기록하든 그날 기록한 칼로리의 합이 섭취 비율이 된다.
         """
         settings = config.personas[self.name]
         if not meals:
             return []
         shares = {m.meal_type: float(settings["meals"][m.meal_type]["share"]) for m in meals}
-        covered = max(sum(shares.values()), float(settings["coverage_min"]))
+        covered = sum(shares.values())
         ratio = self.intake_ratio(config, account, day)
         return [replace(m, kcal_share=ratio * shares[m.meal_type] / covered) for m in meals]
 

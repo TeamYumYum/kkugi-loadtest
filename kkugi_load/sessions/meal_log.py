@@ -47,13 +47,25 @@ class MealInputs:
 
 
 def portion_grams(target_kcal: float, meal: MealInputs, foods: list[dict]) -> tuple[int, ...]:
-    """고른 음식마다 의도한 양(그램). 음식의 100g당 칼로리가 0 이하이면 상한을 쓴다."""
-    grams = []
-    for food, split in zip(foods, meal.splits):
-        kcal_per_100g = float(food["nutritionPer100g"]["kcal"])
-        want = target_kcal * meal.kcal_share * split
-        g = GRAMS_CAP if kcal_per_100g <= 0 else round(want * 100 / kcal_per_100g)
-        grams.append(min(GRAMS_CAP, max(GRAMS_FLOOR, g)))
+    """고른 음식마다 의도한 양(그램). 10-800g으로 자른다.
+
+    음식 하나가 상한에 걸려 몫을 다 못 채우면, 모자란 칼로리를 아직 정하지 않은 음식에 비율대로 넘긴다. 그래서 칼로리가
+    아주 낮은 음식(국, 차)이 섞여도 끼니 칼로리가 계획에 가깝다. 100g당 칼로리가 0 이하이면 상한을 쓴다.
+    """
+    kcal = [float(food["nutritionPer100g"]["kcal"]) for food in foods]
+    want = [target_kcal * meal.kcal_share * split for split in meal.splits]
+    grams = [0] * len(foods)
+    # 상한에 걸리기 쉬운 음식(100g당 칼로리가 낮은 것)부터 정하고 모자란 칼로리를 뒤로 넘긴다
+    order = sorted(range(len(foods)), key=lambda i: kcal[i])
+    for n, i in enumerate(order):
+        g = GRAMS_CAP if kcal[i] <= 0 else round(want[i] * 100 / kcal[i])
+        grams[i] = min(GRAMS_CAP, max(GRAMS_FLOOR, g))
+        short = want[i] - grams[i] * kcal[i] / 100
+        rest = order[n + 1:]
+        if short > 0 and rest:
+            weight = sum(want[j] for j in rest)
+            for j in rest:
+                want[j] += short * (want[j] / weight if weight > 0 else 1 / len(rest))
     return tuple(grams)
 
 

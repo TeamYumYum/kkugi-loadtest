@@ -188,6 +188,15 @@ def test_portion_grams_are_clamped():
     assert meal_log.portion_grams(10, meal, foods) == (meal_log.GRAMS_FLOOR, meal_log.GRAMS_FLOOR)
 
 
+def test_capped_food_passes_its_shortfall_to_the_other_food():
+    # 600kcal를 반씩. 국(20kcal/100g)은 1,500g이 필요해 800g(160kcal)에서 멈추고, 모자란 140kcal를 밥이 받는다
+    meal = replace(_meal(), splits=(0.5, 0.5))
+    foods = [{"nutritionPer100g": {"kcal": 20}}, {"nutritionPer100g": {"kcal": 150}}]
+    soup, rice = meal_log.portion_grams(2000, meal, foods)
+    assert soup == meal_log.GRAMS_CAP
+    assert soup * 20 / 100 + rice * 150 / 100 == pytest.approx(600, abs=1)
+
+
 def test_misjudged_grams_always_differ():
     assert meal_log.misjudged_grams((300, 300), (0, 1.5)) == (450, 300)
     # 배수가 1에 가까워 반올림하면 같아지는 경우
