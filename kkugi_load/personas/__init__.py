@@ -6,11 +6,12 @@ from kkugi_load.accounts.identity import Account, persona_of
 from kkugi_load.config import Config
 from kkugi_load.personas.base import Persona
 from kkugi_load.personas.dieter import Dieter
+from kkugi_load.personas.dormant import Dormant
 from kkugi_load.personas.batch import Batch
 from kkugi_load.personas.beginner import Beginner
 from kkugi_load.personas.expert import Expert
 
-PERSONAS: dict[str, Persona] = {persona.name: persona for persona in [Dieter(), Beginner(), Batch(), Expert()]}
+PERSONAS: dict[str, Persona] = {persona.name: persona for persona in [Dieter(), Beginner(), Batch(), Expert(), Dormant()]}
 
 
 def build_account(config: Config, index: int) -> Account:

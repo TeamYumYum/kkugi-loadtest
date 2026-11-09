@@ -1,4 +1,5 @@
-# 관측 서버에 띄우는 인공 트래픽 발생기. Master 하나와 상시 Worker 여덟이다(페르소나 넷 × 프라이빗·공인 경로).
+# 관측 서버에 띄우는 인공 트래픽 발생기. Master 하나와 상시 Worker 열둘이다(계정 블록 여섯 × 프라이빗·공인 경로).
+# 계정 블록은 다이어터(기존·추가분), 운동 초보자, 하루 몰아 기록형, 운동 숙련자, 휴면 직전이다.
 #
 #   master          통계 집계, 계정 범위 확인, 웹 UI와 조절 경로(/kkugi/*), 거버너. 세션은 실행하지 않는다
 #   worker-private  계정 풀 base. 도메인을 앱 서버 프라이빗 IP로 매핑해 프라이빗 경로로 보낸다
@@ -164,6 +165,37 @@ services:
       KKUGI_POOL: expert-public
       KKUGI_ROUTE: public
       KKUGI_STATE_DB: /app/state/expert-public.db
+
+  # 8,000명 단계: 다이어터 추가분과 휴면 직전. 설정은 위 Worker와 같고 계정 풀과 상태 DB만 다르다
+  worker-dieter-extra-private:
+    <<: *private-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: dieter-extra-private
+      KKUGI_STATE_DB: /app/state/dieter-extra-private.db
+
+  worker-dieter-extra-public:
+    <<: *public-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: dieter-extra-public
+      KKUGI_ROUTE: public
+      KKUGI_STATE_DB: /app/state/dieter-extra-public.db
+
+  worker-dormant-private:
+    <<: *private-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: dormant-private
+      KKUGI_STATE_DB: /app/state/dormant-private.db
+
+  worker-dormant-public:
+    <<: *public-worker
+    environment:
+      <<: *tz
+      KKUGI_POOL: dormant-public
+      KKUGI_ROUTE: public
+      KKUGI_STATE_DB: /app/state/dormant-public.db
 
 volumes:
   # Worker별 상태 DB 파일. 기존 base.db, public.db는 그대로 유지한다.

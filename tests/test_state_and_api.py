@@ -60,7 +60,7 @@ def test_config_reads_pool_and_overrides():
     assert (base.pool.name, base.pool.start, base.pool.end) == ("base", 0, 950)
     assert base.synthetic_header == ("X-Synthetic-Traffic", "1")
     peak = config_module.load({"KKUGI_POOL": "peak-1"})
-    assert peak.pool.start == 10000 and peak.pool.only_between
+    assert peak.pool.start == 90000 and peak.pool.only_between
     small = config_module.load({"KKUGI_ACCOUNT_START": "100", "KKUGI_ACCOUNT_COUNT": "5"})
     assert (small.pool.start, small.pool.end) == (100, 105)
     with pytest.raises(ValueError):
