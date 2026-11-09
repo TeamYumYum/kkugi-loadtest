@@ -3,18 +3,19 @@
     python tools/alert_watch.py --master http://master:8089 \\
         [--prometheus http://host.docker.internal:9090 --stats-dir /app/stats --reports-dir /app/reports]
 
-backend 경보(5xx, 응답 느림, DB 커밋 급증, 커넥션 대기, 재시작, 수집 중단)는 관측 서버 Grafana의 경보 규칙이 맡는다
-(폴더 "꾸기 경보", README의 "경보와 하루 요약"). 이 도구는 Prometheus에 없는 발생기 상태만 본다: 발생기 HTTP 실패,
-거버너의 배율 낮춤, 응답 없는 Worker, Master 조회 실패.
+backend 경보(수집 중단, 5xx, 응답 느림, 커넥션 대기)는 관측 서버 Grafana의 경보 규칙이 맡는다(폴더 "꾸기 경보",
+README의 "경보와 하루 요약"). 이 도구는 Prometheus에 없는 발생기 자체의 고장만 본다: 거버너의 배율 낮춤, 응답 없는
+Worker, Master 조회 실패. 경보는 사람이 바로 움직여야 하는 것만 보낸다. 발생기의 HTTP 실패는 대부분 backend 오류라
+Grafana의 5xx 경보와 겹치므로 여기서 보내지 않고, 하루 요약의 주의 항목에 남긴다.
 
 관측 서버에서는 deploy/docker-compose.yml의 alerts 서비스로 돈다. 웹훅 주소는 환경 변수 KKUGI_MM_WEBHOOK_URL이고,
 비어 있으면 시작하지 않는다. 주소는 비밀값이라 저장소에 두지 않는다.
 
 규칙마다 조건이 for_minutes 동안 이어지면 [경보]를 한 번 보내고, 조건이 풀리면 [해소]를 한 번 보낸다. 같은 경보를 매분
 다시 보내지 않는다. 상태는 메모리에만 있으므로 감시가 다시 시작되면 아직 이어지는 경보를 한 번 더 보낸다.
-감시 자체가 죽었는지 알 수 있게 시작할 때와 매일 HEARTBEAT_HOUR시에 "동작 중"을 보낸다.
---stats-dir를 주면 "동작 중"을 보낼 때 전날의 하루 요약(tools/daily_report.py)도 보낸다. 통계 파일은 --stats-dir에서 가장
-최근의 *_stats_history.csv를 쓰고, 요약 JSON을 --reports-dir에 날짜별로 남겨 다음 날 비교에 쓴다.
+감시 자체가 죽었는지 알 수 있게 시작할 때와 매일 HEARTBEAT_HOUR시에 "동작 중"을 보낸다. --stats-dir를 주면 매일의
+메시지 하나에 전날의 하루 요약(tools/daily_report.py)을 함께 담는다. 통계 파일은 --stats-dir에서 가장 최근의
+*_stats_history.csv를 쓰고, 요약 JSON을 --reports-dir에 날짜별로 남겨 다음 날 비교에 쓴다.
 """
 
 from __future__ import annotations
@@ -64,14 +65,6 @@ def query_master(base: str, fetch: Fetch) -> dict:
 
 # ---------------------------------------------------------------- 규칙
 
-def _generator_failures(control: dict) -> str | None:
-    window = (control.get("governor") or {}).get("last_window") or {}
-    failures = window.get("failures") or 0
-    if failures > 0:
-        return f"발생기 HTTP 실패 {failures}건(최근 {window.get('seconds', 300):.0f}초, 요청 {window.get('requests')}건)"
-    return None
-
-
 def _governor(control: dict) -> str | None:
     requested, scale = control.get("requested_scale"), control.get("scale")
     if requested is not None and scale is not None and scale < requested:
@@ -86,7 +79,6 @@ def _workers(control: dict) -> str | None:
 
 
 RULES = [
-    Rule("발생기 실패", _generator_failures),
     Rule("거버너 배율 낮춤", _governor),
     Rule("Worker 응답 없음", _workers, for_minutes=2),
 ]
@@ -131,20 +123,20 @@ class Watch:
                 self.firing[rule.name] = since
                 self.post(f"[경보] {rule.name}: {detail}")
 
-    def heartbeat(self, now: datetime) -> bool:
-        """하루 한 번 "동작 중"을 보낸다. 보냈으면 True."""
+    def heartbeat(self, now: datetime, report: Callable[[], str] | None = None) -> bool:
+        """하루 한 번 "동작 중"을 보낸다. report가 있으면 그 글(하루 요약)을 같은 메시지 앞에 담는다. 보냈으면 True."""
         day = now.date().isoformat()
         if now.hour == HEARTBEAT_HOUR and self.last_heartbeat != day:
             self.last_heartbeat = day
             firing = ", ".join(sorted(self.firing)) or "없음"
-            self.post(f"발생기 경보 감시 동작 중 ({now:%m-%d %H:%M}). 이어지는 경보: {firing}")
+            status = f"발생기 경보 감시 동작 중 ({now:%m-%d %H:%M}). 이어지는 경보: {firing}"
+            self.post(f"{report()}\n\n{status}" if report else status)
             return True
         return False
 
 
-def post_daily_report(day: str, stats_dir: str, reports_dir: str, prometheus: str, fetch: Fetch,
-                      send: Callable[[str], None]) -> None:
-    """day(YYYY-mm-dd)의 하루 요약을 보낸다. 만들지 못하면 조용히 넘어가지 않고 그 이유를 경보로 보낸다."""
+def daily_report_text(day: str, stats_dir: str, reports_dir: str, prometheus: str, fetch: Fetch) -> str:
+    """day(YYYY-mm-dd)의 하루 요약 글. 만들지 못하면 조용히 넘어가지 않고 그 이유를 경보 글로 돌려준다."""
     try:
         try:
             from tools import daily_report as dr
@@ -162,9 +154,9 @@ def post_daily_report(day: str, stats_dir: str, reports_dir: str, prometheus: st
         report = dr.build(day, histories[-1], dr.Prometheus(prometheus, fetch), None, previous)
         with open(os.path.join(reports_dir, f"{day}.json"), "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
-        send(dr.mattermost_text(report))
+        return dr.mattermost_text(report)
     except (Exception, SystemExit) as e:  # daily_report는 Prometheus 접속 실패에 SystemExit을 쓴다
-        send(f"[경보] {day} 하루 요약을 만들지 못했다: {e}")
+        return f"[경보] {day} 하루 요약을 만들지 못했다: {e}"
 
 
 def webhook_poster(url: str, post: Post, log: Callable[[str], None]) -> Callable[[str], None]:
@@ -208,10 +200,10 @@ def main(argv: list[str] | None = None, *, env: dict | None = None, fetch: Fetch
             log(f"발생기 Master 조회 실패: {e}")
             control = None
         watch.evaluate(control, current)
-        if watch.heartbeat(current) and args.stats_dir:
-            yesterday = (current - timedelta(days=1)).date().isoformat()
-            post_daily_report(yesterday, args.stats_dir, args.reports_dir or args.stats_dir, args.prometheus, fetch,
-                              watch.post)
+        yesterday = (current - timedelta(days=1)).date().isoformat()
+        report = (lambda: daily_report_text(yesterday, args.stats_dir, args.reports_dir or args.stats_dir,
+                                            args.prometheus, fetch)) if args.stats_dir else None
+        watch.heartbeat(current, report)
         done += 1
         if rounds is None or done < rounds:
             sleep(INTERVAL_SECONDS)

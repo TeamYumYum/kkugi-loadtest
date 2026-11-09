@@ -126,45 +126,6 @@ groups:
             source: kkugi-loadtest
             team: kkugi
           isPaused: false
-        - uid: cg3qros3984xsf
-          title: DB 커밋 급증
-          condition: C
-          data:
-            - refId: A
-              relativeTimeRange:
-                from: 600
-                to: 0
-              datasourceUid: prometheus
-              model:
-                expr: sum(rate(mysql_global_status_commands_total{command="commit"}[1m]))
-                instant: true
-                intervalMs: 1000
-                maxDataPoints: 43200
-                range: false
-                refId: A
-            - refId: C
-              datasourceUid: __expr__
-              model:
-                conditions:
-                    - evaluator:
-                        params:
-                            - 150
-                        type: gt
-                expression: A
-                intervalMs: 1000
-                maxDataPoints: 43200
-                refId: C
-                type: threshold
-          noDataState: OK
-          execErrState: Alerting
-          for: 5m
-          annotations:
-            query: sum(rate(mysql_global_status_commands_total{command="commit"}[1m]))
-            summary: DB 커밋이 초당 150건을 넘는다. 4,000명 저녁 배치가 약 66/s였다
-          labels:
-            source: kkugi-loadtest
-            team: kkugi
-          isPaused: false
         - uid: bg3qros5emznkb
           title: 커넥션 풀 대기
           condition: C
@@ -200,44 +161,6 @@ groups:
           annotations:
             query: max(hikaricp_connections_pending)
             summary: Hikari 커넥션 풀에 대기가 있다
-          labels:
-            source: kkugi-loadtest
-            team: kkugi
-          isPaused: false
-        - uid: fg3qros7p1n28d
-          title: backend 재시작
-          condition: C
-          data:
-            - refId: A
-              relativeTimeRange:
-                from: 600
-                to: 0
-              datasourceUid: prometheus
-              model:
-                expr: sum(changes(process_start_time_seconds{job="backend"}[5m]))
-                instant: true
-                intervalMs: 1000
-                maxDataPoints: 43200
-                range: false
-                refId: A
-            - refId: C
-              datasourceUid: __expr__
-              model:
-                conditions:
-                    - evaluator:
-                        params:
-                            - 0
-                        type: gt
-                expression: A
-                intervalMs: 1000
-                maxDataPoints: 43200
-                refId: C
-                type: threshold
-          noDataState: OK
-          execErrState: Alerting
-          annotations:
-            query: sum(changes(process_start_time_seconds{job="backend"}[5m]))
-            summary: backend가 최근 5분 안에 다시 시작했다
           labels:
             source: kkugi-loadtest
             team: kkugi

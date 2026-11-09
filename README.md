@@ -265,6 +265,8 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 
 ### 경보와 하루 요약
 
+경보는 사람이 바로 움직여야 하는 것만 보냅니다. 자주 울리는 경보는 무시되어 중요한 경보를 묻기 때문입니다. 용량 지표(DB 커밋률), 배포 때마다 생기는 backend 재시작, 발생기의 HTTP 실패(대부분 backend 오류라 5xx 경보와 겹침)는 경보로 보내지 않고 매일 9시 하루 요약의 주의 항목에 남깁니다.
+
 경보는 두 곳에서 Mattermost로 보냅니다. 둘 다 상태가 바뀔 때만 보내고, 조건이 풀리면 해소를 한 번 보냅니다. 기준값은 모두 가정입니다.
 
 **backend 경보: 관측 서버 Grafana** (폴더 "꾸기 경보", 그룹 `backend`, 받는 곳 `mattermost-kkugi`, 1분마다 평가)
@@ -274,9 +276,7 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 | backend 지표 수집 안 됨 | `min(up{job="backend"})` (값 없음도 경보) | < 1 | 2분 |
 | 5xx 응답 | 최근 5분 5xx 증가분 + 새로 생긴 5xx 시계열 수 | > 0 | 즉시 |
 | 응답 느림 | 인공 요청 p95(5분), 초당 0.2건 이상일 때만 | > 1초 | 5분 |
-| DB 커밋 급증 | `sum(rate(mysql_global_status_commands_total{command="commit"}[1m]))` | > 150/s | 5분 |
 | 커넥션 풀 대기 | `max(hikaricp_connections_pending)` | > 0 | 1분 |
-| backend 재시작 | `changes(process_start_time_seconds{job="backend"}[5m])` | > 0 | 즉시 |
 
 - 2026-11-09에 Grafana API로 만들었고, 서비스 저장소의 provisioning 파일에는 아직 없습니다. 규칙은 Grafana 데이터 볼륨에 있고, 내보낸 사본을 `deploy/grafana/alert-rules.yaml`에 둡니다. 화면에서 고치면 다시 내보내 이 파일을 갱신합니다. 나중에 서비스 저장소 `infra/observability/grafana/provisioning/alerting/`로 옮깁니다.
 - 받는 곳은 Slack 형식(Mattermost 수신 웹훅이 받는 형식)이고, 기본 알림 정책이 이 받는 곳으로 보냅니다.
@@ -285,13 +285,12 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 
 | 경보 | 조건 |
 | --- | --- |
-| 발생기 실패 | 거버너 창(최근 300초)의 HTTP 실패 1건 이상 |
 | 거버너 배율 낮춤 | 실제 배율이 사람이 정한 배율보다 낮음 |
 | Worker 응답 없음 | 살아 있지 않은 Worker, 2분 |
 | Master 조회 실패 | 3번 연달아 실패 |
 
 - Prometheus에 없는 발생기 상태라 Grafana로 옮기지 않습니다.
-- 감시가 죽었는지 알 수 있게, 시작할 때와 매일 9시에 "동작 중"을 보냅니다. 9시에는 전날의 하루 요약(`tools/daily_report.py`)도 함께 보내고, 요약 JSON을 `reports` 볼륨에 남겨 다음 날 p95 비교에 씁니다.
+- 감시가 죽었는지 알 수 있게, 시작할 때와 매일 9시에 "동작 중"을 보냅니다. 9시 메시지에는 전날의 하루 요약(`tools/daily_report.py`)을 함께 담아 하루 한 번만 보내고, 요약 JSON을 `reports` 볼륨에 남겨 다음 날 p95 비교에 씁니다.
 - 웹훅 주소는 서버의 `deploy/.env`에 `KKUGI_MM_WEBHOOK_URL`로 넣습니다. 비어 있으면 compose 전체가 멈춥니다. 경보 장치가 빠진 채 발생기만 도는 일을 막기 위해서입니다.
 - 감시를 다시 시작하면 아직 이어지는 경보를 한 번 더 보냅니다. 상태를 메모리에만 두기 때문입니다.
 
