@@ -68,7 +68,7 @@ def test_reload_sends_new_text_and_bumps_version(tmp_path):
 
 @pytest.mark.parametrize("text, reason", [
     (FROZEN, "api_prefix"),
-    (DEFAULT_TEXT.replace("[pools.peak-2]\nstart = 11000", "[pools.peak-2]\nstart = 11500"), "pools"),
+    (DEFAULT_TEXT.replace("[pools.peak-2]\nstart = 91000", "[pools.peak-2]\nstart = 91500"), "pools"),
     (DEFAULT_TEXT.replace('header_value = "1"', 'header_value = "2"'), "synthetic"),
     (DEFAULT_TEXT.replace("search_min = 2.0", "search_min = "), "설정을 읽지 못함"),
     (DEFAULT_TEXT.replace("activity = 1.0\n", "activity = 1.5\n", 1), "1을 넘는다"),
