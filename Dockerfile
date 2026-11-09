@@ -25,7 +25,7 @@ RUN pip install -r requirements.txt
 # 상태 DB(state/)와 통계(stats/)만 쓸 수 있게 한다. 이름 있는 볼륨은 처음 만들 때 이 폴더의 소유자를 물려받는다
 RUN useradd --system --uid 10001 --user-group --home-dir /app --shell /usr/sbin/nologin kkugi
 COPY . .
-RUN mkdir -p state stats && chown kkugi:kkugi state stats
+RUN mkdir -p state stats reports && chown kkugi:kkugi state stats reports
 
 USER kkugi
 

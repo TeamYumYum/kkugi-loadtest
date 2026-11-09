@@ -1,0 +1,167 @@
+# 관측 서버 Grafana의 backend 경보 규칙(폴더 "꾸기 경보", 그룹 backend). 2026-11-09에 Grafana API로 만든 것을 내보낸 기록이다.
+# Grafana가 이 파일을 읽지는 않는다. 실제 규칙은 Grafana 데이터 볼륨에 있고, 화면에서 고칠 수 있다. 고쳤으면 다시 내보내 이 파일을 갱신한다.
+#   curl -u <관리자> "http://localhost:3000/api/v1/provisioning/folder/kkugi-alerts/rule-groups/backend/export?format=yaml"
+# 받는 곳(mattermost-kkugi, Slack 형식)과 기본 알림 정책은 웹훅 주소가 들어 있어 여기에 두지 않는다.
+# 나중에 서비스 저장소 infra/observability/grafana/provisioning/alerting/으로 옮기면 Grafana가 직접 읽는다.
+apiVersion: 1
+groups:
+    - orgId: 1
+      name: backend
+      folder: 꾸기 경보
+      interval: 1m
+      rules:
+        - uid: cg3qrorw1iozkf
+          title: backend 지표 수집 안 됨
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: prometheus
+              model:
+                expr: min(up{job="backend"})
+                instant: true
+                intervalMs: 1000
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 1
+                        type: lt
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: Alerting
+          execErrState: Alerting
+          for: 2m
+          annotations:
+            query: min(up{job="backend"})
+            summary: Prometheus가 backend 지표를 수집하지 못한다(up=0 또는 대상 없음)
+          labels:
+            source: kkugi-loadtest
+            team: kkugi
+          isPaused: false
+        - uid: cg3qrorytemtce
+          title: 5xx 응답
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: prometheus
+              model:
+                expr: (sum(increase(http_server_requests_seconds_count{status=~"5.."}[5m])) or vector(0)) + (count(http_server_requests_seconds_count{status=~"5.."} unless http_server_requests_seconds_count{status=~"5.."} offset 5m) or vector(0))
+                instant: true
+                intervalMs: 1000
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                        type: gt
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: OK
+          execErrState: Alerting
+          annotations:
+            query: (sum(increase(http_server_requests_seconds_count{status=~"5.."}[5m])) or vector(0)) + (count(http_server_requests_seconds_count{status=~"5.."} unless http_server_requests_seconds_count{status=~"5.."} offset 5m) or vector(0))
+            summary: 최근 5분 5xx 응답이 있다(인공·실제 요청 모두). 처음 나타난 5xx도 센다
+          labels:
+            source: kkugi-loadtest
+            team: kkugi
+          isPaused: false
+        - uid: bg3qros0ythj4c
+          title: 응답 느림
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: prometheus
+              model:
+                expr: histogram_quantile(0.95, sum by (le)(rate(http_server_requests_seconds_bucket{synthetic="true"}[5m]))) and on() sum(rate(http_server_requests_seconds_count{synthetic="true"}[5m])) > 0.2
+                instant: true
+                intervalMs: 1000
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 1
+                        type: gt
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: OK
+          execErrState: Alerting
+          for: 5m
+          annotations:
+            query: histogram_quantile(0.95, sum by (le)(rate(http_server_requests_seconds_bucket{synthetic="true"}[5m]))) and on() sum(rate(http_server_requests_seconds_count{synthetic="true"}[5m])) > 0.2
+            summary: 인공 요청 p95가 1초를 넘는다(최근 5분). 요청이 초당 0.2건 미만이면 판정하지 않는다
+          labels:
+            source: kkugi-loadtest
+            team: kkugi
+          isPaused: false
+        - uid: bg3qros5emznkb
+          title: 커넥션 풀 대기
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: prometheus
+              model:
+                expr: max(hikaricp_connections_pending)
+                instant: true
+                intervalMs: 1000
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                        type: gt
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: OK
+          execErrState: Alerting
+          for: 1m
+          annotations:
+            query: max(hikaricp_connections_pending)
+            summary: Hikari 커넥션 풀에 대기가 있다
+          labels:
+            source: kkugi-loadtest
+            team: kkugi
+          isPaused: false

@@ -120,6 +120,7 @@ python -m venv .venv
 | `kkugi_load/distributed.py` | Master가 Worker들의 계정 범위가 겹치지 않는지 확인합니다 |
 | `kkugi_load/capacity.py` | 하루 일정에서 필요한 실행기(User) 수를 추정합니다 |
 | `tools/stats_summary.py` | Master가 남긴 통계 CSV를 시간대별 TPS·세션/s 표와 API별 응답 시간 표로 요약합니다. 측정 기록(`notes/decisions/`의 기준선)을 같은 방법으로 다시 잴 때 씁니다 |
+| `tools/daily_report.py` | 하루(한국 시간 00:00-24:00)의 트래픽(Locust history CSV)과 서버 응답 시간·자원(Prometheus)을 마크다운 한 장으로 요약하고, 기준을 넘은 항목을 맨 위 "주의"에 모읍니다. `--json`으로 저장한 파일을 다음 날 `--compare`에 주면 API별 p95가 1.5배 넘게 늘어난 것도 알려 줍니다. `--mattermost`는 주의 목록을 웹훅(`KKUGI_MM_WEBHOOK_URL`)으로 보냅니다. 노트북에서는 `ssh -L 19090:localhost:9090 kkugi-obs` 터널로 Prometheus를 엽니다 |
 | `config/default.toml` | 시간대별 확률표, 활동 배수, 계정 풀, 페르소나 행동, 생각 시간 등 설정. "가정"으로 표시한 값은 확정 사양이 아닙니다 |
 
 새 페르소나는 `personas/`에 파일을 만들고 `personas/__init__.py`에 등록한 뒤, 설정에 `[personas.<이름>]`을 더합니다. 새 세션 종류는 `sessions/`에 만들고 `runner.py`의 `SESSIONS`에 등록합니다.
@@ -261,6 +262,51 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 **되돌리기.** 발생기를 내리려면 `down`만 하면 됩니다. 인공 계정이 쓰는 dev 로그인은 앱 서버 `infra/.env`의 `AUTH_DEV_LOGIN_ENABLED`로 끕니다(서비스 저장소 담당).
 
 **로컬에서 같은 구성 확인.** `deploy/docker-compose.local.yml`을 겹치면 대상이 로컬 backend(`http://host.docker.internal:18080`)로 바뀝니다. 사용법은 파일 머리 주석에 있습니다.
+
+### 경보와 하루 요약
+
+경보는 사람이 바로 움직여야 하는 것만 보냅니다. 자주 울리는 경보는 무시되어 중요한 경보를 묻기 때문입니다. 용량 지표(DB 커밋률), 배포 때마다 생기는 backend 재시작, 발생기의 HTTP 실패(대부분 backend 오류라 5xx 경보와 겹침)는 경보로 보내지 않고 매일 9시 하루 요약의 주의 항목에 남깁니다.
+
+경보는 두 곳에서 Mattermost로 보냅니다. 둘 다 상태가 바뀔 때만 보내고, 조건이 풀리면 해소를 한 번 보냅니다. 기준값은 모두 가정입니다.
+
+**backend 경보: 관측 서버 Grafana** (폴더 "꾸기 경보", 그룹 `backend`, 받는 곳 `mattermost-kkugi`, 1분마다 평가)
+
+| 경보 | 쿼리 요약 | 조건 | 지속 |
+| --- | --- | --- | --- |
+| backend 지표 수집 안 됨 | `min(up{job="backend"})` (값 없음도 경보) | < 1 | 2분 |
+| 5xx 응답 | 최근 5분 5xx 증가분 + 새로 생긴 5xx 시계열 수 | > 0 | 즉시 |
+| 응답 느림 | 인공 요청 p95(5분), 초당 0.2건 이상일 때만 | > 1초 | 5분 |
+| 커넥션 풀 대기 | `max(hikaricp_connections_pending)` | > 0 | 1분 |
+
+- 2026-11-09에 Grafana API로 만들었고, 서비스 저장소의 provisioning 파일에는 아직 없습니다. 규칙은 Grafana 데이터 볼륨에 있고, 내보낸 사본을 `deploy/grafana/alert-rules.yaml`에 둡니다. 화면에서 고치면 다시 내보내 이 파일을 갱신합니다. 나중에 서비스 저장소 `infra/observability/grafana/provisioning/alerting/`로 옮깁니다.
+- 받는 곳은 Slack 형식(Mattermost 수신 웹훅이 받는 형식)이고, 기본 알림 정책이 이 받는 곳으로 보냅니다.
+
+**발생기 경보: `alerts` 컨테이너** (`tools/alert_watch.py`, 1분마다 Master의 `/kkugi/control`을 봄)
+
+| 경보 | 조건 |
+| --- | --- |
+| 거버너 배율 낮춤 | 실제 배율이 사람이 정한 배율보다 낮음 |
+| Worker 응답 없음 | 살아 있지 않은 Worker, 2분 |
+| Master 조회 실패 | 3번 연달아 실패 |
+
+- Prometheus에 없는 발생기 상태라 Grafana로 옮기지 않습니다.
+- 감시가 죽었는지 알 수 있게, 시작할 때와 매일 9시에 "동작 중"을 보냅니다. 9시 메시지에는 전날의 하루 요약(`tools/daily_report.py`)을 함께 담아 하루 한 번만 보내고, 요약 JSON을 `reports` 볼륨에 남겨 다음 날 p95 비교에 씁니다.
+- 웹훅 주소는 서버의 `deploy/.env`에 `KKUGI_MM_WEBHOOK_URL`로 넣습니다. 비어 있으면 compose 전체가 멈춥니다. 경보 장치가 빠진 채 발생기만 도는 일을 막기 위해서입니다.
+- 감시를 다시 시작하면 아직 이어지는 경보를 한 번 더 보냅니다. 상태를 메모리에만 두기 때문입니다.
+
+**웹훅 만들기.** Mattermost에서 받을 채널의 웹훅을 만듭니다.
+
+1. 왼쪽 위 팀 이름 옆 메뉴(또는 제품 메뉴)에서 **통합(Integrations)**을 엽니다.
+2. **Incoming Webhooks(수신 웹훅)** → **추가(Add Incoming Webhook)**를 누릅니다.
+3. 제목(예: 꾸기 인공 트래픽 경보)을 적고, 받을 채널을 고르고, 저장합니다.
+4. 화면에 나온 `https://<Mattermost 주소>/hooks/<키>`가 웹훅 주소입니다. 비밀값이므로 채팅과 저장소에 붙이지 않고 서버의 `deploy/.env`에만 넣습니다.
+5. 메뉴에 통합이 보이지 않으면 시스템 관리자가 수신 웹훅을 꺼 두었거나 통합 관리 권한을 막은 것입니다. 관리자에게 요청합니다.
+
+웹훅을 넣은 뒤 시험으로 하나 보내 볼 수 있습니다.
+
+```bash
+curl -s -X POST -H 'Content-Type: application/json' -d '{"text":"경보 시험"}' "$KKUGI_MM_WEBHOOK_URL"
+```
 
 ### 통계 읽는 법
 
