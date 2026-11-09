@@ -155,6 +155,37 @@ def read_traffic(
     return table, multipliers
 
 
+def read_intake(name: str, persona: dict[str, Any]) -> None:
+    """식사를 기록하는 페르소나(meals가 있는 표)의 섭취 칼로리 설정을 검증한다. 빠진 값은 기본값으로 채우지 않는다."""
+    meals = persona.get("meals")
+    if not meals:
+        return
+    groups = persona.get("adherence_groups")
+    if not groups:
+        raise ValueError(f"[personas.{name}]에 adherence_groups가 없다")
+    for group in groups:
+        if float(group.get("weight", 0)) <= 0 or not 0 <= float(group.get("achieve", -1)) <= 1:
+            raise ValueError(f"[personas.{name}] adherence_groups는 weight > 0, 0 <= achieve <= 1이어야 한다: {group}")
+    intake = persona.get("intake")
+    if intake is None:
+        raise ValueError(f"[personas.{name}.intake]가 없다")
+    for key in ("achieved_ratio", "missed_low", "missed_high"):
+        low, high = (float(x) for x in intake[key])
+        if not 0 < low <= high:
+            raise ValueError(f"[personas.{name}.intake] {key}는 0 < 하한 <= 상한이어야 한다: {intake[key]}")
+    low, high = (float(x) for x in intake["achieved_ratio"])
+    # 서버의 달성 판정(90-110%)과 어긋나면 지키는 날이 실패로, 못 지키는 날이 달성으로 판정된다
+    if not 0.9 <= low <= high <= 1.1:
+        raise ValueError(f"[personas.{name}.intake] achieved_ratio는 0.9-1.1 안이어야 한다")
+    if float(intake["missed_low"][1]) >= 0.9 or float(intake["missed_high"][0]) <= 1.1:
+        raise ValueError(f"[personas.{name}.intake] missed_low는 0.9 미만, missed_high는 1.1 초과여야 한다")
+    if not 0 <= float(intake["missed_over"]) <= 1:
+        raise ValueError(f"[personas.{name}.intake] missed_over는 0-1이어야 한다")
+    for meal_type, meal in meals.items():
+        if "share" not in meal or not 0 < float(meal["share"]) <= 1:
+            raise ValueError(f"[personas.{name}.meals.{meal_type}] share는 0보다 크고 1 이하여야 한다")
+
+
 def read_scale(value: Any) -> float:
     """배율을 검증해 돌려준다. 수가 아니거나 0~1 밖이면 이유를 담은 ValueError를 낸다."""
     if isinstance(value, bool):
@@ -281,6 +312,7 @@ def loads(text: str, env: dict[str, str] | None = None) -> Config:
     if pool.persona is not None and pool.persona not in personas:
         raise ValueError(f"계정 풀 {pool_name}에 설정한 페르소나가 없음: {pool.persona}")
     for persona_name, settings in personas.items():
+        read_intake(persona_name, settings)
         workout = settings.get("workout")
         if workout is None:
             continue

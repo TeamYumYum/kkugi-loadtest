@@ -37,13 +37,16 @@ def test_exact_population_and_routes_without_reassigning_old_accounts():
 
 def test_dieter_profiles_and_plans_match_pr5_fingerprint():
     # PR #5의 다이어터 구현과 기존 설정으로 0-999번의 두 날짜 전체를 계산한 값이다.
+    # 2026-11-09 식사 양을 칼로리로 정하도록 바꾸며 갱신했다. 그때 양 관련 필드(grams, edit_grams → kcal_share, splits,
+    # misjudge)를 빼면 이전 값과 세션·시각·검색어·고르기 값이 모두 같음을 이전 커밋의 코드와 대조했다
+    # 같은 날 하루 섭취를 지키는 무리(adherence_groups)로 바꾸며 다시 갱신했다. kcal_share만 바뀌었음을 대조했다
     config = cm.load({})
     values = []
     for index in range(1000):
         account = build_account(config, index)
         for day in (DAY, date(2026, 11, 8)):
             values.append(repr((account, PERSONAS["dieter"].plan_day(config, account, day))))
-    assert hashlib.sha256("\n".join(values).encode()).hexdigest() == "10152b1a39bedc47cd854e6e260500fc153493104f810b744a415d733723ace9"
+    assert hashlib.sha256("\n".join(values).encode()).hexdigest() == "e917b9115b2424e1e44c0ca13b10cc490c3ed27486de1fa70dbeaf74e5a82bce"
 
 
 def test_existing_state_loads_without_identity_rotation(tmp_path):

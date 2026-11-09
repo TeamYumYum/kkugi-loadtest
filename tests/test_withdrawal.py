@@ -190,7 +190,7 @@ def test_runner_reports_withdrawal_as_account_withdrawn(tmp_path, monkeypatch, s
 def _meal() -> MealInputs:
     return MealInputs(
         meal_type="LUNCH", planned_at=datetime(2026, 10, 28, 12, 0, tzinfo=CONFIG.tz), keywords=("밥",),
-        fallback_keywords=(), grams=(100,), picks=(0,),
+        fallback_keywords=(), kcal_share=0.3, splits=(1.0,), picks=(0,),
     )
 
 
@@ -209,13 +209,13 @@ def test_meal_uuid_comes_from_email_at_session_time(tmp_path):
         kcal["value"] = 300.0
         return 201, {"data": {
             "id": 9, "clientUuid": body["clientUuid"], "mealType": body["mealType"], "eatenAt": body["eatenAt"],
-            "items": [{"foodId": 5, "grams": 100}], "totalNutrition": {"kcal": 300.0},
+            "items": body["items"], "totalNutrition": {"kcal": 300.0},
         }}
 
     client = _FakeClient({
         ("GET", f"/daily-summaries/{DAY}"): lambda _j, _p: (200, {"data": {"intakeKcal": kcal["value"]}}),
         ("GET", "/meals"): (200, {"data": {"meals": []}}),
-        ("GET", "/foods"): (200, {"data": {"items": [{"id": 5, "name": "밥"}]}}),
+        ("GET", "/foods"): (200, {"data": {"items": [{"id": 5, "name": "밥", "nutritionPer100g": {"kcal": 300}}]}}),
         ("POST", "/meals"): save,
     })
     api, _ = _api(tmp_path, client, generation=1)

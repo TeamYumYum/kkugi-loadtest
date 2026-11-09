@@ -227,3 +227,21 @@ def test_weekly_target_is_checked_for_every_persona_with_workouts():
     bad = _with(text, "weekly_target_min = 5\nweekly_target_max = 6", "weekly_target_min = 5\nweekly_target_max = 8")
     with pytest.raises(ValueError, match="expert의 주간 목표"):
         cm.loads(bad, {})
+
+
+@pytest.mark.parametrize("pool, persona", [("batch-private", "batch"), ("expert-private", "expert")])
+def test_day_intake_is_split_over_logged_meals(pool, persona):
+    """몰아 기록형과 숙련자도 그날 식사 칼로리 몫의 합이 끼니 수와 관계없이 하루 섭취 비율이다."""
+    config, accounts = _accounts(pool)
+    checked = 0
+    for account in accounts:
+        for day in WEEK:
+            plan = PERSONAS[persona].plan_day(config, account, day)
+            meals = [m for p in plan if p.session == "batch_log" for m in p.inputs.meals]
+            meals += [p.inputs for p in plan if p.session == "meal_log"]
+            if not meals:
+                continue
+            checked += 1
+            ratio = PERSONAS[persona].intake_ratio(config, account, day)
+            assert abs(sum(m.kcal_share for m in meals) - ratio) < 1e-9
+    assert checked > SAMPLE

@@ -3,7 +3,7 @@
 import math
 from collections import Counter
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -81,8 +81,11 @@ def test_meal_decision_does_not_depend_on_other_hours():
         table[hour] = 0.0
     no_dinner = replace(CONFIG, open_probability=tuple(table))
     for index in range(300):
+        # 끼니 칼로리 몫(kcal_share)은 그날 기록하는 끼니에 따라 다시 나누므로 비교에서 뺀다
+        def strip(plan):
+            return [replace(p, inputs=replace(p.inputs, kcal_share=0.0)) if p.session == "meal_log" else p for p in plan]
         rest = [p for p in _plan(index) if p.at.hour not in dinner]
-        assert _plan(index, no_dinner) == rest
+        assert strip(_plan(index, no_dinner)) == strip(rest)
 
 
 def test_hourly_session_counts_follow_table(plans):
@@ -117,11 +120,10 @@ def test_meal_counts_follow_window_and_probability(plans):
 
 def test_meal_edit_changes_one_amount_at_edit_probability(plans):
     meals = [p.inputs for plan in plans for p in plan if p.session == "meal_log"]
-    edited = [m for m in meals if m.edit_grams is not None]
+    edited = [m for m in meals if m.misjudge is not None]
     for meal in edited:
-        changed = [(a, b) for a, b in zip(meal.grams, meal.edit_grams) if a != b]
-        assert len(meal.edit_grams) == len(meal.grams) and len(changed) == 1
-        assert all(1 <= b <= 5000 for _, b in changed)
+        index, factor = meal.misjudge
+        assert 0 <= index < len(meal.splits) and 0.5 <= factor < 1.5
     p = float(CONFIG.personas["dieter"]["edit_probability"])
     assert abs(len(edited) - len(meals) * p) <= _tolerance(len(meals), p)
 
@@ -211,3 +213,75 @@ def test_evening_workout_follows_weekly_target(plans):
     assert abs(sum(missing) - len(missing) * p) <= _tolerance(len(missing), p)
     # 오늘 부위는 사람과 날짜마다 다르다. 부위 6개에서 순서 있게 2개를 고르는 30가지가 거의 다 나온다
     assert len(day_parts) >= 25
+
+
+def test_day_intake_is_split_over_logged_meals(plans):
+    """그날 기록하는 식사 칼로리 몫의 합은 끼니 수와 관계없이 하루 섭취 비율이다."""
+    for index, plan in enumerate(plans[:2000]):
+        meals = [p.inputs for p in plan if p.session == "meal_log"]
+        if not meals:
+            continue
+        ratio = DIETER.intake_ratio(CONFIG, build_account(CONFIG, index), DAY)
+        assert abs(sum(m.kcal_share for m in meals) - ratio) < 1e-9
+
+
+def test_half_keep_the_goal_90_percent_and_half_60_percent():
+    """계정의 무리는 고정이고 비중은 절반씩이다. 무리마다 목표를 지키는 날의 비율이 achieve에 가깝다."""
+    intake = CONFIG.personas["dieter"]["intake"]
+    low, high = intake["achieved_ratio"]
+    days = [date(2026, 11, 1) + timedelta(days=d) for d in range(30)]
+    kept = {0.9: [0, 0], 0.6: [0, 0]}
+    for index in range(1000):
+        account = build_account(CONFIG, index)
+        achieve = DIETER.adherence(CONFIG, account)
+        assert achieve == DIETER.adherence(CONFIG, account)
+        for day in days:
+            ratio = DIETER.intake_ratio(CONFIG, account, day)
+            assert ratio == DIETER.intake_ratio(CONFIG, account, day)
+            kept[achieve][0] += low <= ratio <= high
+            kept[achieve][1] += 1
+    accounts = {a: n / len(days) for a, (_, n) in kept.items()}
+    assert abs(accounts[0.9] - 500) <= _tolerance(1000, 0.5)
+    for achieve, (hit, n) in kept.items():
+        assert abs(hit - n * achieve) <= _tolerance(n, achieve), (achieve, hit / n)
+
+
+def test_missed_days_are_outside_the_judged_range():
+    """못 지키는 날은 서버의 달성 범위(0.9-1.1) 밖이고, missed_over 비율만큼 많이 먹는다."""
+    intake = CONFIG.personas["dieter"]["intake"]
+    over = under = 0
+    for index in range(500):
+        account = build_account(CONFIG, index)
+        for d in range(30):
+            ratio = DIETER.intake_ratio(CONFIG, account, date(2026, 11, 1) + timedelta(days=d))
+            if 0.9 <= ratio <= 1.1:
+                assert intake["achieved_ratio"][0] <= ratio <= intake["achieved_ratio"][1]
+            elif ratio > 1.1:
+                over += 1
+            else:
+                under += 1
+    p = float(intake["missed_over"])
+    assert abs(over - (over + under) * p) <= _tolerance(over + under, p)
+
+
+@pytest.mark.parametrize("change, message", [
+    ({"adherence_groups": []}, "adherence_groups"),
+    ({"adherence_groups": [{"weight": 1, "achieve": 1.5}]}, "adherence_groups"),
+    ({"intake": {"achieved_ratio": [0.85, 1.0], "missed_low": [0.6, 0.85], "missed_high": [1.15, 1.4],
+                 "missed_over": 0.3}}, "achieved_ratio"),
+    ({"intake": {"achieved_ratio": [0.93, 1.07], "missed_low": [0.6, 0.95], "missed_high": [1.15, 1.4],
+                 "missed_over": 0.3}}, "missed_low"),
+])
+def test_intake_settings_are_validated(change, message):
+    from kkugi_load.config import read_intake
+    settings = {**CONFIG.personas["dieter"], **change}
+    with pytest.raises(ValueError, match=message):
+        read_intake("dieter", settings)
+
+
+def test_meal_share_is_required():
+    from kkugi_load.config import read_intake
+    settings = dict(CONFIG.personas["dieter"])
+    settings["meals"] = {**settings["meals"], "LUNCH": {k: v for k, v in settings["meals"]["LUNCH"].items() if k != "share"}}
+    with pytest.raises(ValueError, match="share"):
+        read_intake("dieter", settings)
