@@ -74,7 +74,9 @@ def test_dieter_meals_follow_settings():
             assert meal.planned_at.tzinfo == CONFIG.tz
             assert len(meal.keywords) == settings["items_per_meal"]
             assert not set(meal.keywords) & set(meal.fallback_keywords)
-            assert all(settings["grams_min"] <= g <= settings["grams_max"] for g in meal.grams)
+            assert len(meal.splits) == settings["items_per_meal"] and abs(sum(meal.splits) - 1) < 1e-9
+            assert 0 < meal.kcal_share <= 1.5
+            assert meal.misjudge is None or 0 <= meal.misjudge[0] < settings["items_per_meal"]
             if meal.meal_type in ("BREAKFAST", "SNACK"):
                 assert set(meal.keywords) <= set(settings["breakfast_keywords"])
             else:

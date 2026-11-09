@@ -28,14 +28,20 @@ def ensure_ready(api: KkugiApi) -> None:
 
 def open_home(api: KkugiApi, day: str) -> dict:
     """앱을 열면 홈 화면이 부르는 조회. 하루 요약을 돌려준다."""
+    return open_home_with_goal(api, day)[0]
+
+
+def open_home_with_goal(api: KkugiApi, day: str) -> tuple[dict, float | None]:
+    """open_home과 같은 요청을 보내고, 하루 요약과 그날 목표 칼로리를 돌려준다. 목표가 아직 없으면 None."""
     summary = api.call("GET", f"/daily-summaries/{day}", name="GET /daily-summaries/{date}").data
-    api.call(
+    goal = api.call(
         "GET", f"/daily-goals/{day}", name="GET /daily-goals/{goalDate}",
         # 코칭 계획이 아직 없으면 404이고 폰은 목표 준비 중으로 보인다
         expect=Expect(allowed={404: {"NOT_FOUND"}}),
     )
     api.call("GET", "/growth/me", name="GET /growth/me")
-    return summary
+    target = goal.data.get("targetKcal") if goal is not None and isinstance(goal.data, dict) else None
+    return summary, float(target) if target is not None else None
 
 
 def daily_summary(api: KkugiApi, day: str) -> dict:

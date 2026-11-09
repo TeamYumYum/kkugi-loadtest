@@ -69,7 +69,7 @@ class Batch(Dieter):
             workout_today = None
         inputs = BatchInputs(
             planned_at=at,
-            meals=tuple(sorted(meals, key=lambda m: m.planned_at)),
+            meals=tuple(sorted(self.apportion(config, account, day, meals), key=lambda m: m.planned_at)),
             weight=weight_session.inputs if weight_session is not None else None,
             workout=workout_today,
         )

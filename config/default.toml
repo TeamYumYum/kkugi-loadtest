@@ -160,10 +160,14 @@ select_max = 4.0
 weight = 35
 # 페르소나 활동 배수. 공통 표의 확률에 곱한다. 필수 값이다
 activity = 1.0
-# 한 끼의 음식 수와 음식당 양(그램). 가정
 items_per_meal = 2
-grams_min = 100
-grams_max = 300
+# 하루 섭취 칼로리를 그날 목표의 비율로 정한다. 계정 평균은 [intake_ratio_min, intake_ratio_max]에서 고정으로 뽑고 날마다
+# ±intake_ratio_spread를 더한다. 서버는 섭취가 목표의 90-110%인 날을 달성으로 판정한다. 가정
+intake_ratio_min = 0.85
+intake_ratio_max = 1.10
+intake_ratio_spread = 0.12
+# 그날 기록하는 끼니의 몫(meals.*.share) 합이 이보다 작으면 이 값으로 나눈다. 한두 끼만 기록한 날은 덜 먹은 날이 된다. 가정
+coverage_min = 0.65
 # 계정마다 main_keywords에서 뽑아 두는 선호 음식 수
 preferred_keywords = 4
 # 식사 기록 중 저장 직후 음식 하나의 양을 고치는 비율. 서비스 저장소 docs/operations/synthetic-traffic.md 4.2절의 가정값
@@ -177,22 +181,27 @@ main_keywords = ["김밥", "비빔밥", "샐러드", "닭가슴살", "된장찌�
 # 그래서 끼니마다 식사 기록은 하루 최대 한 번이다. 창은 정시에 걸쳐야 하고 서로 겹치면 안 된다. 확률 값은 가정.
 # 아침과 간식은 breakfast_keywords에서, 점심·저녁은 계정의 선호 음식에서 검색어를 고른다
 [personas.dieter.meals.BREAKFAST]
+# 하루 섭취 중 이 끼니의 몫. 가정
+share = 0.25
 probability = 0.6
 from = "06:00"
 to = "09:00"
 
 [personas.dieter.meals.LUNCH]
+share = 0.35
 probability = 0.95
 from = "11:00"
 to = "14:00"
 
 [personas.dieter.meals.DINNER]
+share = 0.30
 probability = 0.9
 from = "17:00"
 to = "20:00"
 
 # 오후 간식. 점심과 저녁 사이 창에서 그날 처음 연 세션이 이 확률로 간식 기록이 된다. 창과 확률은 가정
 [personas.dieter.meals.SNACK]
+share = 0.10
 probability = 0.3
 from = "14:00"
 to = "17:00"
@@ -264,8 +273,13 @@ weight = 15
 # 낮의 홈 조회 빈도. 기록은 밤에 몰아서 하므로 낮에는 덜 연다
 activity = 0.5
 items_per_meal = 2
-grams_min = 100
-grams_max = 300
+# 하루 섭취 칼로리를 그날 목표의 비율로 정한다. 계정 평균은 [intake_ratio_min, intake_ratio_max]에서 고정으로 뽑고 날마다
+# ±intake_ratio_spread를 더한다. 서버는 섭취가 목표의 90-110%인 날을 달성으로 판정한다. 가정
+intake_ratio_min = 0.80
+intake_ratio_max = 1.10
+intake_ratio_spread = 0.15
+# 그날 기록하는 끼니의 몫(meals.*.share) 합이 이보다 작으면 이 값으로 나눈다. 한두 끼만 기록한 날은 덜 먹은 날이 된다. 가정
+coverage_min = 0.65
 preferred_keywords = 4
 edit_probability = 0.1
 breakfast_keywords = ["오트밀", "요거트", "바나나", "사과", "토스트", "달걀", "고구마", "우유"]
@@ -278,16 +292,20 @@ from = "23:00"
 to = "23:30"
 
 [personas.batch.meals.BREAKFAST]
+# 하루 섭취 중 이 끼니의 몫. 가정
+share = 0.25
 probability = 0.7
 from = "07:00"
 to = "09:00"
 
 [personas.batch.meals.LUNCH]
+share = 0.35
 probability = 0.95
 from = "12:00"
 to = "13:00"
 
 [personas.batch.meals.DINNER]
+share = 0.30
 probability = 0.95
 from = "18:00"
 to = "20:00"
@@ -324,30 +342,40 @@ weight = 9
 # 앱을 자주 연다. 상한은 0.5(가장 큰 시간대 확률) × 활동 배수 × 1.5(가장 큰 계정 배수) <= 1이라 1.33이다
 activity = 1.2
 items_per_meal = 2
-grams_min = 150
-grams_max = 350
+# 하루 섭취 칼로리를 그날 목표의 비율로 정한다. 계정 평균은 [intake_ratio_min, intake_ratio_max]에서 고정으로 뽑고 날마다
+# ±intake_ratio_spread를 더한다. 서버는 섭취가 목표의 90-110%인 날을 달성으로 판정한다. 가정
+intake_ratio_min = 0.90
+intake_ratio_max = 1.15
+intake_ratio_spread = 0.10
+# 그날 기록하는 끼니의 몫(meals.*.share) 합이 이보다 작으면 이 값으로 나눈다. 한두 끼만 기록한 날은 덜 먹은 날이 된다. 가정
+coverage_min = 0.65
 preferred_keywords = 4
 edit_probability = 0.1
 breakfast_keywords = ["달걀", "오트밀", "요거트", "바나나", "우유", "고구마"]
 main_keywords = ["닭가슴살", "현미밥", "두부", "샐러드", "제육볶음", "비빔밥", "김밥", "된장찌개"]
 
 [personas.expert.meals.BREAKFAST]
+# 하루 섭취 중 이 끼니의 몫. 가정
+share = 0.25
 probability = 0.9
 from = "06:00"
 to = "09:00"
 
 [personas.expert.meals.LUNCH]
+share = 0.35
 probability = 0.95
 from = "11:00"
 to = "14:00"
 
 [personas.expert.meals.DINNER]
+share = 0.30
 probability = 0.95
 from = "17:00"
 to = "20:00"
 
 # 운동 뒤 단백질 간식
 [personas.expert.meals.SNACK]
+share = 0.10
 probability = 0.5
 from = "14:00"
 to = "17:00"

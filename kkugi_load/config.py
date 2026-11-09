@@ -155,6 +155,26 @@ def read_traffic(
     return table, multipliers
 
 
+def read_intake(name: str, persona: dict[str, Any]) -> None:
+    """식사를 기록하는 페르소나(meals가 있는 표)의 섭취 칼로리 설정을 검증한다. 빠진 값은 기본값으로 채우지 않는다."""
+    meals = persona.get("meals")
+    if not meals:
+        return
+    for key in ("intake_ratio_min", "intake_ratio_max", "intake_ratio_spread", "coverage_min"):
+        if key not in persona:
+            raise ValueError(f"[personas.{name}]에 {key}가 없다")
+    low, high = float(persona["intake_ratio_min"]), float(persona["intake_ratio_max"])
+    if not 0 < low <= high:
+        raise ValueError(f"[personas.{name}] intake_ratio는 0 < min <= max여야 한다: {low}, {high}")
+    if float(persona["intake_ratio_spread"]) < 0:
+        raise ValueError(f"[personas.{name}] intake_ratio_spread는 0 이상이어야 한다")
+    if not 0 < float(persona["coverage_min"]) <= 1:
+        raise ValueError(f"[personas.{name}] coverage_min은 0보다 크고 1 이하여야 한다")
+    for meal_type, meal in meals.items():
+        if "share" not in meal or not 0 < float(meal["share"]) <= 1:
+            raise ValueError(f"[personas.{name}.meals.{meal_type}] share는 0보다 크고 1 이하여야 한다")
+
+
 def read_scale(value: Any) -> float:
     """배율을 검증해 돌려준다. 수가 아니거나 0~1 밖이면 이유를 담은 ValueError를 낸다."""
     if isinstance(value, bool):
@@ -281,6 +301,7 @@ def loads(text: str, env: dict[str, str] | None = None) -> Config:
     if pool.persona is not None and pool.persona not in personas:
         raise ValueError(f"계정 풀 {pool_name}에 설정한 페르소나가 없음: {pool.persona}")
     for persona_name, settings in personas.items():
+        read_intake(persona_name, settings)
         workout = settings.get("workout")
         if workout is None:
             continue

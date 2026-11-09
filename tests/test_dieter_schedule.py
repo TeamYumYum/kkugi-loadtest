@@ -81,8 +81,11 @@ def test_meal_decision_does_not_depend_on_other_hours():
         table[hour] = 0.0
     no_dinner = replace(CONFIG, open_probability=tuple(table))
     for index in range(300):
+        # 끼니 칼로리 몫(kcal_share)은 그날 기록하는 끼니에 따라 다시 나누므로 비교에서 뺀다
+        def strip(plan):
+            return [replace(p, inputs=replace(p.inputs, kcal_share=0.0)) if p.session == "meal_log" else p for p in plan]
         rest = [p for p in _plan(index) if p.at.hour not in dinner]
-        assert _plan(index, no_dinner) == rest
+        assert strip(_plan(index, no_dinner)) == strip(rest)
 
 
 def test_hourly_session_counts_follow_table(plans):
@@ -117,11 +120,10 @@ def test_meal_counts_follow_window_and_probability(plans):
 
 def test_meal_edit_changes_one_amount_at_edit_probability(plans):
     meals = [p.inputs for plan in plans for p in plan if p.session == "meal_log"]
-    edited = [m for m in meals if m.edit_grams is not None]
+    edited = [m for m in meals if m.misjudge is not None]
     for meal in edited:
-        changed = [(a, b) for a, b in zip(meal.grams, meal.edit_grams) if a != b]
-        assert len(meal.edit_grams) == len(meal.grams) and len(changed) == 1
-        assert all(1 <= b <= 5000 for _, b in changed)
+        index, factor = meal.misjudge
+        assert 0 <= index < len(meal.splits) and 0.5 <= factor < 1.5
     p = float(CONFIG.personas["dieter"]["edit_probability"])
     assert abs(len(edited) - len(meals) * p) <= _tolerance(len(meals), p)
 
@@ -211,3 +213,49 @@ def test_evening_workout_follows_weekly_target(plans):
     assert abs(sum(missing) - len(missing) * p) <= _tolerance(len(missing), p)
     # 오늘 부위는 사람과 날짜마다 다르다. 부위 6개에서 순서 있게 2개를 고르는 30가지가 거의 다 나온다
     assert len(day_parts) >= 25
+
+
+def test_day_intake_is_split_over_logged_meals(plans):
+    """그날 식사 칼로리 몫의 합은 하루 섭취 비율이다. 기록하는 끼니 몫이 coverage_min보다 작은 날만 그 비율만큼 덜 먹는다."""
+    settings = CONFIG.personas["dieter"]
+    low, high = float(settings["intake_ratio_min"]), float(settings["intake_ratio_max"])
+    spread, floor = float(settings["intake_ratio_spread"]), float(settings["coverage_min"])
+    for index, plan in enumerate(plans[:2000]):
+        meals = [p.inputs for p in plan if p.session == "meal_log"]
+        if not meals:
+            continue
+        ratio = DIETER.intake_ratio(CONFIG, build_account(CONFIG, index), DAY)
+        assert low - spread <= ratio <= high + spread
+        covered = sum(float(settings["meals"][m.meal_type]["share"]) for m in meals)
+        expected = ratio * min(1.0, covered / floor)
+        assert abs(sum(m.kcal_share for m in meals) - expected) < 1e-9
+
+
+def test_intake_mean_is_fixed_per_account():
+    """계정 평균은 날짜와 관계없다. 날마다 달라지는 폭은 spread의 두 배를 넘지 않는다."""
+    spread = float(CONFIG.personas["dieter"]["intake_ratio_spread"])
+    for index in range(200):
+        account = build_account(CONFIG, index)
+        ratios = [DIETER.intake_ratio(CONFIG, account, date(2026, 11, d)) for d in range(1, 15)]
+        assert ratios == [DIETER.intake_ratio(CONFIG, account, date(2026, 11, d)) for d in range(1, 15)]
+        assert max(ratios) - min(ratios) <= 2 * spread + 1e-9
+
+
+@pytest.mark.parametrize("change, message", [
+    ({"coverage_min": 0}, "coverage_min"),
+    ({"intake_ratio_min": 1.2, "intake_ratio_max": 1.0}, "intake_ratio"),
+    ({"intake_ratio_spread": -0.1}, "intake_ratio_spread"),
+])
+def test_intake_settings_are_validated(change, message):
+    from kkugi_load.config import read_intake
+    settings = {**CONFIG.personas["dieter"], **change}
+    with pytest.raises(ValueError, match=message):
+        read_intake("dieter", settings)
+
+
+def test_meal_share_is_required():
+    from kkugi_load.config import read_intake
+    settings = dict(CONFIG.personas["dieter"])
+    settings["meals"] = {**settings["meals"], "LUNCH": {k: v for k, v in settings["meals"]["LUNCH"].items() if k != "share"}}
+    with pytest.raises(ValueError, match="share"):
+        read_intake("dieter", settings)

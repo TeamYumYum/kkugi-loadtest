@@ -3,13 +3,15 @@
 앱을 여는 시각은 공통 시간대 표가 정한다(base.open_times). 끼니 창(간식 창 포함) 안에서 그날 처음 연 세션만 그 끼니의
 probability로 식사 기록(meal_log)이 되고, 나머지는 조회(view)다. 그래서 끼니마다 식사 기록은 하루 최대 한 번이다.
 식사 기록의 일부(edit_probability)는 저장 직후 음식 하나의 양을 고친다.
+끼니의 칼로리는 그날 목표 칼로리의 비율(kcal_share)로 정한다. 하루 섭취 비율(intake_ratio_*)을 그날 기록하는 끼니의
+몫(meals.*.share)대로 나눈다(apportion).
 체중 창 안의 조회 세션 중 그날 첫 번째는 body_weight.probability로 체중 기록(weight_log)이 된다. 체중 기록도 하루 최대 한 번이다.
 운동 창 안의 조회 세션 중 그날 첫 번째는 주간 목표 횟수 / 7 확률로 운동 기록(workout)이 된다. 운동 기록도 하루 최대 한 번이다.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 
 from kkugi_load.accounts.identity import Account, seeded_rng, seeded_uniforms
@@ -75,7 +77,31 @@ class Dieter(Persona):
                     planned.append(session)
                     continue
             planned.append(PlannedSession(account.index, f"{self.name}_view", at, "view", ViewInputs(planned_at=at)))
-        return planned
+        shared = {m.meal_type: m for m in self.apportion(
+            config, account, day, [p.inputs for p in planned if p.session == "meal_log"])}
+        return [replace(p, inputs=shared[p.inputs.meal_type]) if p.session == "meal_log" else p for p in planned]
+
+    def intake_ratio(self, config: Config, account: Account, day: date) -> float:
+        """그날 하루 섭취 칼로리를 목표의 비율로. 계정 평균은 날짜와 관계없이 같고, 날마다 ±spread만큼 흔들린다."""
+        settings = config.personas[self.name]
+        low, high = float(settings["intake_ratio_min"]), float(settings["intake_ratio_max"])
+        (mean_u,) = seeded_uniforms(config.seed, "intake_mean", account.index)
+        (day_u,) = seeded_uniforms(config.seed, "intake_day", account.index, day.isoformat())
+        return max(0.0, low + mean_u * (high - low) + (2 * day_u - 1) * float(settings["intake_ratio_spread"]))
+
+    def apportion(self, config: Config, account: Account, day: date, meals: list[MealInputs]) -> list[MealInputs]:
+        """그날 기록할 끼니들에 하루 섭취 비율을 끼니 몫대로 나눠 kcal_share를 채운다.
+
+        몫의 합이 coverage_min 이상이면 하루 섭취가 정확히 intake_ratio다. 아침을 걸러도 다른 끼니를 더 먹는다고 본다.
+        그보다 작으면 coverage_min으로 나누므로, 한 끼만 기록한 날은 목표보다 덜 먹은 날이 된다.
+        """
+        settings = config.personas[self.name]
+        if not meals:
+            return []
+        shares = {m.meal_type: float(settings["meals"][m.meal_type]["share"]) for m in meals}
+        covered = max(sum(shares.values()), float(settings["coverage_min"]))
+        ratio = self.intake_ratio(config, account, day)
+        return [replace(m, kcal_share=ratio * shares[m.meal_type] / covered) for m in meals]
 
     def _plan_weight(self, config: Config, account: Account, day: date, at: datetime) -> PlannedSession | None:
         """체중 창의 첫 조회 세션을 체중 기록으로 할지 정한다. 기록하지 않으면 None.
@@ -118,8 +144,8 @@ class Dieter(Persona):
         """
         settings = config.personas[self.name]
         items = int(settings["items_per_meal"])
-        # 기록 여부 1개, 그 뒤로 음식마다 단어·양·검색 결과 고르기에 하나씩, 마지막에 수정 여부·고칠 음식·배율에 하나씩 쓴다.
-        # 수정 값을 뒤에 붙였으므로 앞의 값은 수정 기능을 더하기 전과 같다
+        # 기록 여부 1개, 그 뒤로 음식마다 단어·칼로리 비율·검색 결과 고르기에 하나씩, 마지막에 수정 여부·고칠 음식·배율에
+        # 하나씩 쓴다. 칼로리 비율 자리는 예전에 양(그램)을 정하던 자리다. kcal_share는 apportion이 채운다
         u = seeded_uniforms(config.seed, "meal", account.index, day.isoformat(), meal_type, count=4 + 3 * items)
         if u[0] >= float(settings["meals"][meal_type]["probability"]):
             return None
@@ -127,33 +153,29 @@ class Dieter(Persona):
         light = meal_type in ("BREAKFAST", "SNACK")
         pool = list(settings["breakfast_keywords"]) if light else list(account.profile.preferred_keywords)
         keywords = _sample(pool, u[1:1 + items])
-        grams_min, grams_max = int(settings["grams_min"]), int(settings["grams_max"])
-        grams = tuple(grams_min + int(x * (grams_max - grams_min + 1)) for x in u[1 + items:1 + 2 * items])
+        weights = [0.5 + x for x in u[1 + items:1 + 2 * items]]
         return MealInputs(
             meal_type=meal_type,
             planned_at=at,
             keywords=keywords,
             # 검색 결과가 없을 때 이어서 검색할 단어
             fallback_keywords=tuple(k for k in pool if k not in keywords),
-            grams=grams,
+            kcal_share=0.0,
+            splits=tuple(w / sum(weights) for w in weights),
             picks=tuple(int(x * 1000) for x in u[1 + 2 * items:1 + 3 * items]),
-            edit_grams=_edit_grams(grams, u[1 + 3 * items:], float(settings["edit_probability"])),
+            misjudge=_misjudge(items, u[1 + 3 * items:], float(settings["edit_probability"])),
         )
 
 
-def _edit_grams(grams: tuple[int, ...], u: tuple[float, ...], probability: float) -> tuple[int, ...] | None:
-    """저장 직후 고칠 양. 음식 하나의 양을 0.5-1.5배로 바꾼다. 고치지 않으면 None.
+def _misjudge(items: int, u: tuple[float, ...], probability: float) -> tuple[int, float] | None:
+    """처음에 양을 잘못 입력할 음식의 순번과 배수(0.5-1.5). 잘못 입력하지 않으면 None.
 
-    u는 수정 여부, 고칠 음식, 배율 순서의 값 세 개다. 바꾼 양이 원래와 같으면 10g 늘려 실제로 바뀌게 한다.
+    u는 수정 여부, 고칠 음식, 배수 순서의 값 세 개다.
     """
     decide, which, factor = u
     if decide >= probability:
         return None
-    i = int(which * len(grams))
-    new = min(5000, max(1, round(grams[i] * (0.5 + factor))))
-    if new == grams[i]:
-        new += 10
-    return grams[:i] + (new,) + grams[i + 1:]
+    return int(which * items), 0.5 + factor
 
 
 def _sample(pool: list[str], uniforms: tuple[float, ...]) -> tuple[str, ...]:
