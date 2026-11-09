@@ -49,6 +49,43 @@ groups:
             source: kkugi-loadtest
             team: kkugi
           isPaused: false
+        - uid: eg3r2ode1t3i8f
+          title: 발생기가 아닌 트래픽 급증
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: prometheus
+              model:
+                expr: sum(rate(http_server_requests_seconds_count{synthetic!="true"}[5m]))
+                instant: true
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: A
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 2
+                        type: gt
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: OK
+          execErrState: Alerting
+          for: 5m
+          annotations:
+            summary: 발생기가 아닌 요청이 초당 2건을 넘는다(5분). 봇·공격, 재시도 폭주, 실수로 돌린 스크립트를 확인한다. 실제 사용자가 늘면 기준을 다시 정한다
+          labels:
+            source: kkugi-loadtest
+            team: kkugi
+          isPaused: false
         - uid: cg3qrorytemtce
           title: 5xx 응답
           condition: C

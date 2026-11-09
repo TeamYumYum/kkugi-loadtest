@@ -277,9 +277,11 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 | 5xx 응답 | 최근 5분 5xx 증가분 + 새로 생긴 5xx 시계열 수 | > 0 | 즉시 |
 | 응답 느림 | 인공 요청 p95(5분), 초당 0.2건 이상일 때만 | > 1초 | 5분 |
 | 커넥션 풀 대기 | `max(hikaricp_connections_pending)` | > 0 | 1분 |
+| 발생기가 아닌 트래픽 급증 | `sum(rate(http_server_requests_seconds_count{synthetic!="true"}[5m]))` | > 2/s | 5분 |
 
 - 2026-11-09에 Grafana API로 만들었고, 서비스 저장소의 provisioning 파일에는 아직 없습니다. 규칙은 Grafana 데이터 볼륨에 있고, 내보낸 사본을 `deploy/grafana/alert-rules.yaml`에 둡니다. 화면에서 고치면 다시 내보내 이 파일을 갱신합니다. 나중에 서비스 저장소 `infra/observability/grafana/provisioning/alerting/`로 옮깁니다.
 - 받는 곳은 Slack 형식(Mattermost 수신 웹훅이 받는 형식)이고, 기본 알림 정책이 이 받는 곳으로 보냅니다.
+- 트래픽 급증 자체에는 경보를 걸지 않습니다. 발생기는 06시와 23시에 일부러 40-60배 급증을 만들고, 서버가 견디지 못하면 응답 느림·5xx·커넥션 대기가 잡습니다. 다만 지금 운영 트래픽은 거의 전부 발생기라, 발생기가 아닌 요청이 몰리면 봇·공격, 재시도 폭주, 실수로 돌린 스크립트일 가능성이 커서 따로 봅니다. 실제 사용자가 늘면 기준을 다시 정합니다.
 
 **발생기 경보: `alerts` 컨테이너** (`tools/alert_watch.py`, 1분마다 Master의 `/kkugi/control`을 봄)
 
