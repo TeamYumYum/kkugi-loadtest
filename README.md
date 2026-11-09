@@ -120,6 +120,7 @@ python -m venv .venv
 | `kkugi_load/distributed.py` | Master가 Worker들의 계정 범위가 겹치지 않는지 확인합니다 |
 | `kkugi_load/capacity.py` | 하루 일정에서 필요한 실행기(User) 수를 추정합니다 |
 | `tools/stats_summary.py` | Master가 남긴 통계 CSV를 시간대별 TPS·세션/s 표와 API별 응답 시간 표로 요약합니다. 측정 기록(`notes/decisions/`의 기준선)을 같은 방법으로 다시 잴 때 씁니다 |
+| `tools/daily_report.py` | 하루(한국 시간 00:00-24:00)의 트래픽(Locust history CSV)과 서버 응답 시간·자원(Prometheus)을 마크다운 한 장으로 요약하고, 기준을 넘은 항목을 맨 위 "주의"에 모읍니다. `--json`으로 저장한 파일을 다음 날 `--compare`에 주면 API별 p95가 1.5배 넘게 늘어난 것도 알려 줍니다. `--mattermost`는 주의 목록을 웹훅(`KKUGI_MM_WEBHOOK_URL`)으로 보냅니다. 노트북에서는 `ssh -L 19090:localhost:9090 kkugi-obs` 터널로 Prometheus를 엽니다 |
 | `config/default.toml` | 시간대별 확률표, 활동 배수, 계정 풀, 페르소나 행동, 생각 시간 등 설정. "가정"으로 표시한 값은 확정 사양이 아닙니다 |
 
 새 페르소나는 `personas/`에 파일을 만들고 `personas/__init__.py`에 등록한 뒤, 설정에 `[personas.<이름>]`을 더합니다. 새 세션 종류는 `sessions/`에 만들고 `runner.py`의 `SESSIONS`에 등록합니다.
