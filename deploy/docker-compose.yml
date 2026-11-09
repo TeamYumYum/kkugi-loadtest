@@ -165,8 +165,35 @@ services:
       KKUGI_ROUTE: public
       KKUGI_STATE_DB: /app/state/expert-public.db
 
+  # 실시간 경보(tools/alert_watch.py). 1분마다 Prometheus와 Master를 보고 상태가 바뀔 때 Mattermost로 보낸다.
+  # Prometheus는 관측 서버 호스트의 9090 포트라 host-gateway로 닿는다. 웹훅이 비면 compose 전체가 멈춘다.
+  # 경보 장치가 조용히 빠진 채 발생기만 도는 일을 막기 위해서다
+  alerts:
+    <<: *common
+    entrypoint: ["python", "tools/alert_watch.py"]
+    # 매일 9시에 전날의 하루 요약도 보낸다. 통계 CSV는 읽기만 하고, 요약 JSON은 reports 볼륨에 날짜별로 남긴다
+    command: ["--prometheus", "http://host.docker.internal:9090", "--master", "http://master:8089",
+              "--stats-dir", "/app/stats", "--reports-dir", "/app/reports"]
+    volumes:
+      - stats:/app/stats:ro
+      - reports:/app/reports
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *tz
+      KKUGI_MM_WEBHOOK_URL: ${KKUGI_MM_WEBHOOK_URL:?deploy/.env에 KKUGI_MM_WEBHOOK_URL(Mattermost 웹훅)을 적어야 한다}
+    depends_on:
+      - master
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+
 volumes:
   # Worker별 상태 DB 파일. 기존 base.db, public.db는 그대로 유지한다.
   state:
   # Master의 통계 CSV. 시작마다 kkugi-<시작 시각>_stats.csv, _stats_history.csv, _failures.csv, _exceptions.csv 네 개
   stats:
+  # 경보 감시가 남기는 하루 요약 JSON(<날짜>.json). 다음 날 p95 비교에 쓴다
+  reports:

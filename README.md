@@ -263,6 +263,41 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 
 **로컬에서 같은 구성 확인.** `deploy/docker-compose.local.yml`을 겹치면 대상이 로컬 backend(`http://host.docker.internal:18080`)로 바뀝니다. 사용법은 파일 머리 주석에 있습니다.
 
+### 경보와 하루 요약
+
+관측 서버의 `alerts` 컨테이너(`tools/alert_watch.py`)가 1분마다 Prometheus와 Master를 보고, 상태가 바뀔 때만 Mattermost로 보냅니다. 조건이 이어지는 동안에는 다시 보내지 않고, 풀리면 `[해소]`를 한 번 보냅니다.
+
+| 경보 | 조건 (기준값은 가정) |
+| --- | --- |
+| backend 지표 수집 안 됨 | `up{job="backend"}`가 0이거나 없음, 2분 |
+| 5xx 응답 | 최근 5분 5xx가 1건 이상(인공·실제 요청 모두). 처음 나타난 5xx도 센다 |
+| 응답 느림 | 인공 요청 p95 1,000ms 초과, 5분. 요청이 초당 0.2건 미만이면 판정하지 않음 |
+| DB 커밋 급증 | 1분 커밋률 150/s 초과, 5분 |
+| 커넥션 풀 대기 | Hikari 대기 1개 이상, 1분 |
+| backend 재시작 | 최근 5분 안에 재시작 |
+| 발생기 실패 | Master 거버너 창(최근 300초)의 HTTP 실패 1건 이상 |
+| 거버너 배율 낮춤 | 실제 배율이 사람이 정한 배율보다 낮음 |
+| Worker 응답 없음 | `/kkugi/control`에서 살아 있지 않은 Worker, 2분 |
+| 조회 실패 | Prometheus나 Master 조회가 3번 연달아 실패 |
+
+- 감시가 죽었는지 알 수 있게, 시작할 때와 매일 9시에 "동작 중"을 보냅니다. 9시에는 전날의 하루 요약(`tools/daily_report.py`)도 함께 보내고, 요약 JSON을 `reports` 볼륨에 남겨 다음 날 p95 비교에 씁니다.
+- 웹훅 주소는 서버의 `deploy/.env`에 `KKUGI_MM_WEBHOOK_URL`로 넣습니다. 비어 있으면 compose 전체가 멈춥니다. 경보 장치가 빠진 채 발생기만 도는 일을 막기 위해서입니다.
+- 감시를 다시 시작하면 아직 이어지는 경보를 한 번 더 보냅니다. 상태를 메모리에만 두기 때문입니다.
+
+**웹훅 만들기.** Mattermost에서 받을 채널의 웹훅을 만듭니다.
+
+1. 왼쪽 위 팀 이름 옆 메뉴(또는 제품 메뉴)에서 **통합(Integrations)**을 엽니다.
+2. **Incoming Webhooks(수신 웹훅)** → **추가(Add Incoming Webhook)**를 누릅니다.
+3. 제목(예: 꾸기 인공 트래픽 경보)을 적고, 받을 채널을 고르고, 저장합니다.
+4. 화면에 나온 `https://<Mattermost 주소>/hooks/<키>`가 웹훅 주소입니다. 비밀값이므로 채팅과 저장소에 붙이지 않고 서버의 `deploy/.env`에만 넣습니다.
+5. 메뉴에 통합이 보이지 않으면 시스템 관리자가 수신 웹훅을 꺼 두었거나 통합 관리 권한을 막은 것입니다. 관리자에게 요청합니다.
+
+웹훅을 넣은 뒤 시험으로 하나 보내 볼 수 있습니다.
+
+```bash
+curl -s -X POST -H 'Content-Type: application/json' -d '{"text":"경보 시험"}' "$KKUGI_MM_WEBHOOK_URL"
+```
+
 ### 통계 읽는 법
 
 | 이름 | 의미 |
