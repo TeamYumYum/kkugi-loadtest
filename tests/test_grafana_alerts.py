@@ -144,7 +144,7 @@ def test_export_refuses_rules_it_cannot_express():
 
 
 def test_file_rules_are_valid_and_unique():
-    assert len({r["uid"] for r in SPEC["rules"]}) == len(SPEC["rules"]) == 5
+    assert len({r["uid"] for r in SPEC["rules"]}) == len(SPEC["rules"]) == 8
     assert "${KKUGI_MM_WEBHOOK_URL}" in SPEC["contactPoint"]["settings"]["url"]
 
 

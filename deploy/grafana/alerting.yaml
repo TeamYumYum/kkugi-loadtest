@@ -44,6 +44,33 @@ rules:
     noData: Alerting
     summary: Prometheus가 backend 지표를 수집하지 못한다(up=0 또는 대상 없음)
 
+  # 아래 세 규칙은 서비스 저장소의 파일 프로비저닝(S15P31E101-542)에서 옮겨 왔다. 그쪽 파일은 지웠다
+  - uid: kkugi-mysql-down
+    title: MySQL 응답 없음
+    query: max(mysql_up)
+    threshold: {op: lt, value: 1}
+    for: 2m
+    # 지표가 통째로 안 들어오면 "데이터 서버 수집 끊김"이 맡는다
+    noData: OK
+    summary: 데이터 서버 Alloy가 MySQL에 접속하지 못한다
+
+  - uid: kkugi-redis-down
+    title: Redis 응답 없음
+    query: max(redis_up)
+    threshold: {op: lt, value: 1}
+    for: 2m
+    noData: OK
+    summary: 데이터 서버 Alloy가 Redis에 접속하지 못한다
+
+  - uid: kkugi-data-server-missing
+    title: 데이터 서버 수집 끊김
+    # 데이터 서버(job=node) 지표가 1분 동안 하나도 안 들어오면 1, 들어오면 결과가 빈다
+    query: 'absent_over_time(up{job="node"}[1m])'
+    threshold: {op: gt, value: 0}
+    for: 5m
+    noData: OK
+    summary: 데이터 서버의 지표가 관측 서버에 들어오지 않는다. 서버, 그 서버의 Alloy, 관측 서버 수신 중 하나가 끊겼다
+
   - uid: kkugi-5xx
     title: 5xx 응답
     # 5xx 시계열이 처음 생기면 increase()가 그 첫 건을 못 센다. 최근 5분에 새로 생긴 5xx 시계열 수를 더한다

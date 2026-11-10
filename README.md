@@ -275,6 +275,9 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 | 경보 | 쿼리 요약 | 조건 | 지속 |
 | --- | --- | --- | --- |
 | backend 지표 수집 안 됨 | `min(up{job="backend"})` (값 없음도 경보) | < 1 | 2분 |
+| MySQL 응답 없음 | `max(mysql_up)` | < 1 | 2분 |
+| Redis 응답 없음 | `max(redis_up)` | < 1 | 2분 |
+| 데이터 서버 수집 끊김 | `absent_over_time(up{job="node"}[1m])` | > 0 | 5분 |
 | 5xx 응답 | 최근 5분 5xx 증가분 + 새로 생긴 5xx 시계열 수 | > 0 | 즉시 |
 | 응답 느림 | 인공 요청 p95(5분), 초당 0.2건 이상일 때만 | > 1초 | 5분 |
 | 커넥션 풀 대기 | `max(hikaricp_connections_pending)` | > 0 | 1분 |
