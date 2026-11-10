@@ -332,3 +332,14 @@ def test_no_mattermost_flag_sends_nothing(tmp_path, capsys):
             fetch=FakeProm(_healthy_rules()), post=lambda url, body: sent.append(url),
             env={dr.WEBHOOK_ENV: "https://mm.example/hooks/abc"})
     assert sent == []
+
+
+@pytest.mark.parametrize("text, safe", [
+    ("backend 재시작: 09:49:51, 10:14:44", "backend 재시작: `09:49:51`, `10:14:44`"),
+    ("p99 3200ms (11-10 09:00).", "p99 3200ms (11-10 09:00)."),
+    ("이미 `10:14:44` 감쌈", "이미 `10:14:44` 감쌈"),
+    ("문장 :smile: 끝", "문장 `:smile:` 끝"),
+    ("주의: 없음", "주의: 없음"),
+])
+def test_mattermost_safe_keeps_emoji_codes_from_rendering(text, safe):
+    assert dr.mattermost_safe(text) == safe

@@ -54,8 +54,9 @@ def test_generator_http_failures_alone_do_not_alert():
 
 def test_governor_lowering_scale():
     watch, sent = _watch()
-    watch.evaluate(_control(scale=0.7, governor={"last_change": "실패율 2% 초과"}), _at(0))
-    assert sent == ["[경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.7로 낮췄다: 실패율 2% 초과"]
+    change = {"at": "2026-11-09T08:57:14+00:00", "from": 1.0, "to": 0.7, "reason": "기준 초과로 낮춤: p99 3200ms > 3000ms"}
+    watch.evaluate(_control(scale=0.7, governor={"last_change": change}), _at(0))
+    assert sent == ["[경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.7로 낮췄다. 기준 초과로 낮춤: p99 3200ms > 3000ms"]
 
 
 def test_dead_worker_needs_two_minutes():
@@ -163,3 +164,10 @@ def test_heartbeat_also_posts_yesterdays_daily_report(tmp_path, monkeypatch):
 def test_daily_report_failure_is_sent_not_swallowed(tmp_path):
     text = aw.daily_report_text("2026-11-09", str(tmp_path), str(tmp_path), "http://p:9090", lambda u: b"")
     assert text.startswith("[경보] 2026-11-09 하루 요약을 만들지 못했다")
+
+
+def test_posted_text_has_no_emoji_like_codes():
+    posts = []
+    send = aw.webhook_poster("https://h", lambda u, b: posts.append(b), lambda _t: None)
+    send("backend 재시작: 09:49:51, 10:14:44")
+    assert json.loads(posts[0].decode("utf-8"))["text"] == "backend 재시작: `09:49:51`, `10:14:44`"
