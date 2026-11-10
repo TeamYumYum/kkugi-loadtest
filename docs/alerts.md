@@ -74,6 +74,7 @@ export $(grep '^KKUGI_MM_WEBHOOK_URL=' deploy/.env)
 - **원인이 아니라 증상인가.** 트래픽 급증은 원인이다. 서버가 견디지 못하면 응답 느림, 5xx, 커넥션 대기가 잡는다.
 - **다른 경보와 겹치는가.** 같은 장애로 두 번 울리면 하나를 뺀다.
 - **결과가 비는 것이 정상인가.** 그렇다면 `noData: OK`다. 대상이 사라진 것이 장애이면 `noData: Alerting`이다.
+- **얼마나 급한가.** 서비스가 멈췄거나 오류를 내면 `severity: critical`(`:usagi_chainsaw:`), 곧 장애가 될 수 있는 신호면 `severity: warning`(`:hachiware_angry:`)이다. 해소는 `:dancing_usagi:`다. 이모지는 받는 곳의 메시지 틀(`contactPoint.settings.text`)이 고른다.
 
 ## 한계
 

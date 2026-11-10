@@ -270,6 +270,15 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 
 경보는 두 곳에서 Mattermost로 보냅니다. 둘 다 상태가 바뀔 때만 보내고, 조건이 풀리면 해소를 한 번 보냅니다. 기준값은 모두 가정입니다.
 
+메시지 앞의 이모지는 역할을 나타냅니다. 신재은 님이 쓰던 Mattermost 커스텀 이모지입니다.
+
+| 이모지 | 역할 | 메시지 |
+| --- | --- | --- |
+| `:usagi_chainsaw:` | 장애 발생 | Grafana 경보 중 `severity: critical`: backend 수집 안 됨, MySQL·Redis 응답 없음, 데이터 서버 수집 끊김, 5xx |
+| `:hachiware_angry:` | 주의 | Grafana 경보 중 `severity: warning`(응답 느림, 커넥션 풀 대기, 발생기가 아닌 트래픽 급증)과 발생기 경보 전부 |
+| `:dancing_usagi:` | 해소 | 모든 경보의 해소 |
+| `:chiikawa_candy:` | 일상 보고 | 매일 9시 하루 요약과 "동작 중" |
+
 **backend 경보: 관측 서버 Grafana** (폴더 "꾸기 경보", 그룹 `backend`, 받는 곳 `mattermost-kkugi`, 1분마다 평가)
 
 | 경보 | 쿼리 요약 | 조건 | 지속 |

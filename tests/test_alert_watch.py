@@ -38,9 +38,9 @@ def test_governor_fires_once_and_resolves_once():
     watch, sent = _watch()
     watch.evaluate(lowered, _at(0))
     watch.evaluate(lowered, _at(1))
-    assert sent == ["[경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.7로 낮췄다"]
+    assert sent == [":hachiware_angry: [경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.7로 낮췄다"]
     watch.evaluate(CONTROL, _at(6))
-    assert sent[-1] == "[해소] 거버너 배율 낮춤 (6분 이어짐)"
+    assert sent[-1] == ":dancing_usagi: [해소] 거버너 배율 낮춤 (6분 이어짐)"
     assert len(sent) == 2
 
 
@@ -56,7 +56,7 @@ def test_governor_lowering_scale():
     watch, sent = _watch()
     change = {"at": "2026-11-09T08:57:14+00:00", "from": 1.0, "to": 0.7, "reason": "기준 초과로 낮춤: p99 3200ms > 3000ms"}
     watch.evaluate(_control(scale=0.7, governor={"last_change": change}), _at(0))
-    assert sent == ["[경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.7로 낮췄다. 기준 초과로 낮춤: p99 3200ms > 3000ms"]
+    assert sent == [":hachiware_angry: [경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.7로 낮췄다. 기준 초과로 낮춤: p99 3200ms > 3000ms"]
 
 
 def test_dead_worker_needs_two_minutes():
@@ -68,7 +68,7 @@ def test_dead_worker_needs_two_minutes():
     watch.evaluate(dead, _at(3))
     assert sent == []
     watch.evaluate(dead, _at(4))
-    assert sent == ["[경보] Worker 응답 없음: 응답 없는 Worker 1개: bbb"]
+    assert sent == [":hachiware_angry: [경보] Worker 응답 없음: 응답 없는 Worker 1개: bbb"]
 
 
 def test_master_fetch_failures_alert_after_three_and_resolve():
@@ -77,10 +77,10 @@ def test_master_fetch_failures_alert_after_three_and_resolve():
     watch.evaluate(None, _at(1))
     assert sent == []
     watch.evaluate(None, _at(2))
-    assert sent == ["[경보] 발생기 Master 조회 실패 3회 연속. 발생기 경보를 판정하지 못한다"]
+    assert sent == [":hachiware_angry: [경보] 발생기 Master 조회 실패 3회 연속. 발생기 경보를 판정하지 못한다"]
     watch.evaluate(None, _at(3))
     watch.evaluate(CONTROL, _at(4))
-    assert sent[-1] == "[해소] 발생기 Master 조회가 다시 된다"
+    assert sent[-1] == ":dancing_usagi: [해소] 발생기 Master 조회가 다시 된다"
     assert len(sent) == 2
 
 
@@ -89,7 +89,7 @@ def test_heartbeat_once_a_day_at_nine():
     assert not watch.heartbeat(datetime(2026, 11, 10, 8, 59, tzinfo=aw.KST))
     assert watch.heartbeat(datetime(2026, 11, 10, 9, 0, tzinfo=aw.KST))
     assert not watch.heartbeat(datetime(2026, 11, 10, 9, 1, tzinfo=aw.KST))
-    assert sent == ["발생기 경보 감시 동작 중 (11-10 09:00). 이어지는 경보: 없음"]
+    assert sent == [":chiikawa_candy: 발생기 경보 감시 동작 중 (11-10 09:00). 이어지는 경보: 없음"]
 
 
 def test_daily_report_and_status_are_one_message():
@@ -126,7 +126,7 @@ def test_main_posts_start_and_alerts(capsys):
     texts = [json.loads(b.decode("utf-8"))["text"] for _u, b in posts]
     # 시작 알림은 보내지 않고 로그에만 남긴다
     assert "발생기 경보 감시 시작" in capsys.readouterr().out
-    assert texts == ["[경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.5로 낮췄다"]
+    assert texts == [":hachiware_angry: [경보] 거버너 배율 낮춤: 거버너가 배율을 1.0 → 0.5로 낮췄다"]
     assert all(u == "https://mm.example/hooks/x" for u, _b in posts)
 
 
@@ -163,7 +163,7 @@ def test_heartbeat_also_posts_yesterdays_daily_report(tmp_path, monkeypatch):
 
 def test_daily_report_failure_is_sent_not_swallowed(tmp_path):
     text = aw.daily_report_text("2026-11-09", str(tmp_path), str(tmp_path), "http://p:9090", lambda u: b"")
-    assert text.startswith("[경보] 2026-11-09 하루 요약을 만들지 못했다")
+    assert text.startswith(":hachiware_angry: [경보] 2026-11-09 하루 요약을 만들지 못했다")
 
 
 def test_posted_text_has_no_emoji_like_codes():

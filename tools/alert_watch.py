@@ -33,9 +33,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 try:
-    from tools.daily_report import mattermost_safe
+    from tools.daily_report import EMOJI, mattermost_safe
 except ImportError:  # python tools/alert_watch.py로 실행하면 tools/가 경로의 맨 앞이다
-    from daily_report import mattermost_safe
+    from daily_report import EMOJI, mattermost_safe
 
 KST = timezone(timedelta(hours=9))
 WEBHOOK_ENV = "KKUGI_MM_WEBHOOK_URL"
@@ -63,6 +63,8 @@ class Rule:
     # Master의 /kkugi/control 응답을 받아, 조건이 참이면 현재 값을 설명하는 문장, 거짓이면 None
     check: Callable[[dict], str | None]
     for_minutes: int = 0
+    # critical(장애) 또는 warning(주의). 경보 메시지 앞의 이모지를 정한다
+    severity: str = "warning"
 
 
 def query_master(base: str, fetch: Fetch) -> dict:
@@ -111,12 +113,13 @@ class Watch:
             self.fetch_failures += 1
             if self.fetch_failures >= FETCH_FAILURES_TO_ALERT and not self.fetch_firing:
                 self.fetch_firing = True
-                self.post(f"[경보] 발생기 Master 조회 실패 {self.fetch_failures}회 연속. 발생기 경보를 판정하지 못한다")
+                self.post(f"{EMOJI['warning']} [경보] 발생기 Master 조회 실패 {self.fetch_failures}회 연속. "
+                          "발생기 경보를 판정하지 못한다")
             return
         self.fetch_failures = 0
         if self.fetch_firing:
             self.fetch_firing = False
-            self.post("[해소] 발생기 Master 조회가 다시 된다")
+            self.post(f"{EMOJI['resolved']} [해소] 발생기 Master 조회가 다시 된다")
         for rule in self.rules:
             detail = rule.check(control)
             if detail is None:
@@ -124,12 +127,12 @@ class Watch:
                 if rule.name in self.firing:
                     started = self.firing.pop(rule.name)
                     minutes = max(1, round((now - started).total_seconds() / 60))
-                    self.post(f"[해소] {rule.name} ({minutes}분 이어짐)")
+                    self.post(f"{EMOJI['resolved']} [해소] {rule.name} ({minutes}분 이어짐)")
                 continue
             since = self.pending_since.setdefault(rule.name, now)
             if rule.name not in self.firing and now - since >= timedelta(minutes=rule.for_minutes):
                 self.firing[rule.name] = since
-                self.post(f"[경보] {rule.name}: {detail}")
+                self.post(f"{EMOJI[rule.severity]} [경보] {rule.name}: {detail}")
 
     def heartbeat(self, now: datetime, report: Callable[[], str] | None = None) -> bool:
         """하루 한 번 "동작 중"을 보낸다. report가 있으면 그 글(하루 요약)을 같은 메시지 앞에 담는다. 보냈으면 True."""
@@ -138,7 +141,8 @@ class Watch:
             self.last_heartbeat = day
             firing = ", ".join(sorted(self.firing)) or "없음"
             status = f"발생기 경보 감시 동작 중 ({now:%m-%d %H:%M}). 이어지는 경보: {firing}"
-            self.post(f"{report()}\n\n{status}" if report else status)
+            # 하루 요약이 있으면 그 머리에 이미 이모지가 있다
+            self.post(f"{report()}\n\n{status}" if report else f"{EMOJI['daily']} {status}")
             return True
         return False
 
@@ -164,7 +168,7 @@ def daily_report_text(day: str, stats_dir: str, reports_dir: str, prometheus: st
             json.dump(report, f, ensure_ascii=False, indent=2)
         return dr.mattermost_text(report)
     except (Exception, SystemExit) as e:  # daily_report는 Prometheus 접속 실패에 SystemExit을 쓴다
-        return f"[경보] {day} 하루 요약을 만들지 못했다: {e}"
+        return f"{EMOJI['warning']} [경보] {day} 하루 요약을 만들지 못했다: {e}"
 
 
 def webhook_poster(url: str, post: Post, log: Callable[[str], None]) -> Callable[[str], None]:

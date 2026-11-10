@@ -311,7 +311,7 @@ def test_mattermost_sends_cautions_and_key_numbers(tmp_path, capsys):
     url, body = sent[0]
     assert url == "https://mm.example/hooks/abc"
     text = json.loads(body.decode("utf-8"))["text"]
-    assert text.startswith(f"#### 인공 트래픽 하루 요약 {DATE}")
+    assert text.startswith(f"#### :chiikawa_candy: 인공 트래픽 하루 요약 {DATE}")
     assert "**주의" in text and "GET /foods" in text
     assert "HTTP 요청" in text
 
@@ -340,6 +340,8 @@ def test_no_mattermost_flag_sends_nothing(tmp_path, capsys):
     ("이미 `10:14:44` 감쌈", "이미 `10:14:44` 감쌈"),
     ("문장 :smile: 끝", "문장 `:smile:` 끝"),
     ("주의: 없음", "주의: 없음"),
+    (":usagi_chainsaw: [경보] 10:14:44", ":usagi_chainsaw: [경보] `10:14:44`"),
+    (":dancing_usagi: [해소]", ":dancing_usagi: [해소]"),
 ])
 def test_mattermost_safe_keeps_emoji_codes_from_rendering(text, safe):
     assert dr.mattermost_safe(text) == safe

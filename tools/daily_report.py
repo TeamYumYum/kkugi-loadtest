@@ -387,6 +387,14 @@ def _post(url: str, body: bytes) -> None:
 # Mattermost는 :이름: 모양을 이모지 코드로 읽는다. 시각 10:14:44 안의 :14:도 걸린다
 _EMOJI_LIKE = re.compile(r":[A-Za-z0-9_+\-]+:")
 
+# 메시지 역할마다 일부러 붙이는 Mattermost 커스텀 이모지. mattermost_safe가 감싸지 않는다(README "경보와 하루 요약")
+EMOJI = {
+    "critical": ":usagi_chainsaw:",   # 장애 발생
+    "warning": ":hachiware_angry:",   # 주의. 곧 장애가 될 수 있음
+    "resolved": ":dancing_usagi:",    # 해소
+    "daily": ":chiikawa_candy:",      # 매일 9시 하루 요약과 "동작 중"
+}
+
 
 def mattermost_safe(text: str) -> str:
     """:이름: 모양이 든 낱말을 백틱으로 감싸 이모지로 바뀌지 않게 한다. 이미 백틱 안에 있는 부분은 그대로 둔다.
@@ -398,6 +406,8 @@ def mattermost_safe(text: str) -> str:
         words = parts[i].split(" ")
         for j, word in enumerate(words):
             core = word.rstrip(",.);")
+            if core in EMOJI.values():  # 역할 이모지는 그림으로 보여야 한다
+                continue
             if _EMOJI_LIKE.search(core):
                 words[j] = f"`{core}`{word[len(core):]}"
         parts[i] = " ".join(words)
@@ -407,7 +417,7 @@ def mattermost_safe(text: str) -> str:
 def mattermost_text(report: dict) -> str:
     """Mattermost로 보낼 짧은 요약. 주의 목록이 먼저고, 그 뒤에 하루의 핵심 숫자를 한 줄로 붙인다."""
     t = report["traffic"]
-    lines = [f"#### 인공 트래픽 하루 요약 {report['date']}"]
+    lines = [f"#### {EMOJI['daily']} 인공 트래픽 하루 요약 {report['date']}"]
     if report["cautions"]:
         lines.append(f"**주의 {len(report['cautions'])}건**")
         lines += [f"- {c}" for c in report["cautions"]]
