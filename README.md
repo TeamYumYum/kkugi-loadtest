@@ -120,6 +120,7 @@ python -m venv .venv
 | `kkugi_load/distributed.py` | Master가 Worker들의 계정 범위가 겹치지 않는지 확인합니다 |
 | `kkugi_load/capacity.py` | 하루 일정에서 필요한 실행기(User) 수를 추정합니다 |
 | `tools/stats_summary.py` | Master가 남긴 통계 CSV를 시간대별 TPS·세션/s 표와 API별 응답 시간 표로 요약합니다. 측정 기록(`notes/decisions/`의 기준선)을 같은 방법으로 다시 잴 때 씁니다 |
+| `tools/grafana_alerts.py` | git의 경보 파일(`deploy/grafana/alerting.yaml`)과 관측 서버 Grafana를 비교(`diff`)하고, API로 반영(`apply`)하고, 화면에서 고친 규칙을 파일 모양으로 내보냅니다(`export`). 사용법은 [경보 운영 가이드](docs/alerts.md) |
 | `tools/daily_report.py` | 하루(한국 시간 00:00-24:00)의 트래픽(Locust history CSV)과 서버 응답 시간·자원(Prometheus)을 마크다운 한 장으로 요약하고, 기준을 넘은 항목을 맨 위 "주의"에 모읍니다. `--json`으로 저장한 파일을 다음 날 `--compare`에 주면 API별 p95가 1.5배 넘게 늘어난 것도 알려 줍니다. `--mattermost`는 주의 목록을 웹훅(`KKUGI_MM_WEBHOOK_URL`)으로 보냅니다. 노트북에서는 `ssh -L 19090:localhost:9090 kkugi-obs` 터널로 Prometheus를 엽니다 |
 | `config/default.toml` | 시간대별 확률표, 활동 배수, 계정 풀, 페르소나 행동, 생각 시간 등 설정. "가정"으로 표시한 값은 확정 사양이 아닙니다 |
 
@@ -279,7 +280,7 @@ aws lightsail get-instance-metric-data --profile kkugi --region ap-northeast-2  
 | 커넥션 풀 대기 | `max(hikaricp_connections_pending)` | > 0 | 1분 |
 | 발생기가 아닌 트래픽 급증 | `sum(rate(http_server_requests_seconds_count{synthetic!="true"}[5m]))` | > 2/s | 5분 |
 
-- 2026-11-09에 Grafana API로 만들었고, 서비스 저장소의 provisioning 파일에는 아직 없습니다. 규칙은 Grafana 데이터 볼륨에 있고, 내보낸 사본을 `deploy/grafana/alert-rules.yaml`에 둡니다. 화면에서 고치면 다시 내보내 이 파일을 갱신합니다. 나중에 서비스 저장소 `infra/observability/grafana/provisioning/alerting/`로 옮깁니다.
+- 기준은 `deploy/grafana/alerting.yaml`이고, `tools/grafana_alerts.py`가 Grafana API로 반영합니다. Grafana를 다시 시작하지 않습니다. 고치고 반영하는 방법은 [경보 운영 가이드](docs/alerts.md)에 있습니다.
 - 받는 곳은 Slack 형식(Mattermost 수신 웹훅이 받는 형식)이고, 기본 알림 정책이 이 받는 곳으로 보냅니다.
 - 트래픽 급증 자체에는 경보를 걸지 않습니다. 발생기는 06시와 23시에 일부러 40-60배 급증을 만들고, 서버가 견디지 못하면 응답 느림·5xx·커넥션 대기가 잡습니다. 다만 지금 운영 트래픽은 거의 전부 발생기라, 발생기가 아닌 요청이 몰리면 봇·공격, 재시도 폭주, 실수로 돌린 스크립트일 가능성이 커서 따로 봅니다. 실제 사용자가 늘면 기준을 다시 정합니다.
 

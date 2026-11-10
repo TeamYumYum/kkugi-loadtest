@@ -1,0 +1,85 @@
+# 관측 서버 Grafana의 backend 경보. 이 파일이 기준이고, tools/grafana_alerts.py가 Grafana API로 반영한다(재시작 없음).
+# 운영 방법은 docs/alerts.md에 있다. 기준값은 모두 가정이다.
+#
+#   diff    이 파일과 지금 Grafana를 비교한다
+#   apply   이 파일 내용을 Grafana에 반영한다
+#   export  Grafana 화면에서 고친 규칙을 이 파일 모양으로 출력한다
+#
+# 경보는 사람이 바로 움직여야 하는 것만 둔다. 용량 지표, 배포 때마다 생기는 재시작, 발생기의 HTTP 실패는 하루 요약
+# (tools/daily_report.py)의 주의 항목으로 보낸다. 발생기 자체의 고장은 tools/alert_watch.py가 맡는다.
+# 웹훅 주소는 비밀값이라 ${KKUGI_MM_WEBHOOK_URL} 자리표시만 둔다. apply할 때 같은 이름의 환경 변수로 채운다.
+
+folder:
+  uid: kkugi-alerts
+  title: 꾸기 경보
+
+group:
+  name: backend
+  interval: 1m
+
+contactPoint:
+  name: mattermost-kkugi
+  # Mattermost 수신 웹훅은 Slack 형식을 받는다. Grafana에는 Mattermost 전용 연동이 없다
+  type: slack
+  settings:
+    url: ${KKUGI_MM_WEBHOOK_URL}
+    username: 꾸기 경보
+
+# 기본 알림 정책. Grafana 전체에 하나뿐이라 apply하면 서버의 기본 정책을 이 값으로 바꾼다
+policy:
+  receiver: mattermost-kkugi
+  group_by: [grafana_folder, alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+# 규칙마다 쿼리 하나와 기준 하나다. op는 gt(초과) 또는 lt(미만)이다.
+# noData: 값이 없을 때. 결과가 비는 것이 정상인 규칙(5xx 등)은 OK, 대상이 사라진 것이 장애인 규칙은 Alerting이다
+rules:
+  - uid: kkugi-backend-down
+    title: backend 지표 수집 안 됨
+    query: 'min(up{job="backend"})'
+    threshold: {op: lt, value: 1}
+    for: 2m
+    noData: Alerting
+    summary: Prometheus가 backend 지표를 수집하지 못한다(up=0 또는 대상 없음)
+
+  - uid: kkugi-5xx
+    title: 5xx 응답
+    # 5xx 시계열이 처음 생기면 increase()가 그 첫 건을 못 센다. 최근 5분에 새로 생긴 5xx 시계열 수를 더한다
+    query: >-
+      (sum(increase(http_server_requests_seconds_count{status=~"5.."}[5m])) or vector(0))
+      + (count(http_server_requests_seconds_count{status=~"5.."}
+      unless http_server_requests_seconds_count{status=~"5.."} offset 5m) or vector(0))
+    threshold: {op: gt, value: 0}
+    for: 0s
+    noData: OK
+    summary: 최근 5분 5xx 응답이 있다(인공·실제 요청 모두). 처음 나타난 5xx도 센다
+
+  - uid: kkugi-slow
+    title: 응답 느림
+    query: >-
+      histogram_quantile(0.95, sum by (le)(rate(http_server_requests_seconds_bucket{synthetic="true"}[5m])))
+      and on() sum(rate(http_server_requests_seconds_count{synthetic="true"}[5m])) > 0.2
+    threshold: {op: gt, value: 1}
+    for: 5m
+    noData: OK
+    summary: 인공 요청 p95가 1초를 넘는다(최근 5분). 요청이 초당 0.2건 미만이면 판정하지 않는다
+
+  - uid: kkugi-pool-pending
+    title: 커넥션 풀 대기
+    query: max(hikaricp_connections_pending)
+    threshold: {op: gt, value: 0}
+    for: 1m
+    noData: OK
+    summary: Hikari 커넥션 풀에 대기가 있다
+
+  - uid: kkugi-non-synthetic
+    title: 발생기가 아닌 트래픽 급증
+    query: 'sum(rate(http_server_requests_seconds_count{synthetic!="true"}[5m]))'
+    threshold: {op: gt, value: 2}
+    for: 5m
+    noData: OK
+    summary: >-
+      발생기가 아닌 요청이 초당 2건을 넘는다(5분). 봇·공격, 재시도 폭주, 실수로 돌린 스크립트를 확인한다.
+      실제 사용자가 늘면 기준을 다시 정한다
