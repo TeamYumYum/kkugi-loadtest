@@ -36,6 +36,7 @@ DATASOURCE = "prometheus"
 COMMON_LABELS = {"team": "kkugi", "source": "kkugi-loadtest"}
 PLACEHOLDER = re.compile(r"\$\{([A-Z0-9_]+)\}")
 OPS = {"gt", "lt"}
+SEVERITIES = {"critical", "warning"}
 
 # (메서드, 경로, 본문, 헤더) -> (상태 코드, 본문). 바꿔 끼우면 네트워크 없이 시험할 수 있다
 Http = Callable[[str, str, object, dict], tuple[int, object]]
@@ -89,6 +90,8 @@ def load(path: str) -> dict:
     for rule in spec["rules"]:
         if rule["threshold"]["op"] not in OPS:
             raise SystemExit(f"규칙 {rule['uid']}의 op는 {sorted(OPS)} 중 하나여야 한다")
+        if rule.get("severity") not in SEVERITIES:
+            raise SystemExit(f"규칙 {rule['uid']}의 severity는 {sorted(SEVERITIES)} 중 하나여야 한다")
     return spec
 
 
@@ -118,7 +121,8 @@ def to_grafana(rule: dict, spec: dict) -> dict:
         "for": rule["for"],
         "noDataState": rule["noData"],
         "execErrState": "Alerting",
-        "labels": dict(COMMON_LABELS),
+        # severity는 받는 곳의 메시지 틀이 이모지를 고르는 데 쓴다
+        "labels": {**COMMON_LABELS, "severity": rule["severity"]},
         "annotations": {"summary": rule["summary"]},
         "data": [
             {"refId": "A", "relativeTimeRange": {"from": 600, "to": 0}, "datasourceUid": DATASOURCE,
@@ -142,6 +146,7 @@ def from_grafana(live: dict) -> dict:
         "title": live["title"],
         "query": data["A"]["model"]["expr"],
         "threshold": {"op": evaluator["type"], "value": evaluator["params"][0]},
+        "severity": (live.get("labels") or {}).get("severity"),
         "for": live["for"],
         "noData": live["noDataState"],
         "summary": (live.get("annotations") or {}).get("summary", ""),
@@ -188,8 +193,14 @@ def diff(g: Grafana, spec: dict, out: Callable[[str], None]) -> int:
     cp = spec["contactPoint"]
     if cp["name"] not in points:
         problems.append(f"Grafana에 없음: 받는 곳 {cp['name']}")
-    elif points[cp["name"]].get("type") != cp["type"]:
-        problems.append(f"다름: 받는 곳 {cp['name']}의 type")
+    else:
+        if points[cp["name"]].get("type") != cp["type"]:
+            problems.append(f"다름: 받는 곳 {cp['name']}의 type")
+        # url은 Grafana가 가려서 돌려주므로 비교하지 않는다. 메시지 틀은 비교한다
+        live_settings = points[cp["name"]].get("settings") or {}
+        for key in ("title", "text"):
+            if cp["settings"].get(key) != live_settings.get(key):
+                problems.append(f"다름: 받는 곳 {cp['name']}의 {key}")
     policy = g.get("/api/v1/provisioning/policies") or {}
     for key, value in spec["policy"].items():
         if policy.get(key) != value:
