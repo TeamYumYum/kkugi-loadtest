@@ -20,6 +20,7 @@ import csv
 import json
 import math
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -383,6 +384,26 @@ def _post(url: str, body: bytes) -> None:
         response.read()
 
 
+# Mattermost는 :이름: 모양을 이모지 코드로 읽는다. 시각 10:14:44 안의 :14:도 걸린다
+_EMOJI_LIKE = re.compile(r":[A-Za-z0-9_+\-]+:")
+
+
+def mattermost_safe(text: str) -> str:
+    """:이름: 모양이 든 낱말을 백틱으로 감싸 이모지로 바뀌지 않게 한다. 이미 백틱 안에 있는 부분은 그대로 둔다.
+
+    낱말 끝의 쉼표·마침표·괄호는 백틱 밖에 둔다. 예: "재시작: 09:49:51, 10:14:44" -> "재시작: `09:49:51`, `10:14:44`"
+    """
+    parts = text.split("`")
+    for i in range(0, len(parts), 2):  # 짝수 번째가 백틱 밖이다
+        words = parts[i].split(" ")
+        for j, word in enumerate(words):
+            core = word.rstrip(",.);")
+            if _EMOJI_LIKE.search(core):
+                words[j] = f"`{core}`{word[len(core):]}"
+        parts[i] = " ".join(words)
+    return "`".join(parts)
+
+
 def mattermost_text(report: dict) -> str:
     """Mattermost로 보낼 짧은 요약. 주의 목록이 먼저고, 그 뒤에 하루의 핵심 숫자를 한 줄로 붙인다."""
     t = report["traffic"]
@@ -396,7 +417,7 @@ def mattermost_text(report: dict) -> str:
         f"HTTP 요청 {_f(t.get('http_requests'), ',')}, 평균 {_f(t.get('avg_tps'), '.3f')} TPS, "
         f"HTTP 실패 {_f(t.get('http_failures'), ',')}, 놓친 세션 {_f(t.get('missed_sessions'), ',')}"
     )
-    return "\n".join(lines)
+    return mattermost_safe("\n".join(lines))
 
 
 def send_mattermost(report: dict, post: Post = _post, env: dict | None = None) -> None:

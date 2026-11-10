@@ -32,6 +32,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
+try:
+    from tools.daily_report import mattermost_safe
+except ImportError:  # python tools/alert_watch.py로 실행하면 tools/가 경로의 맨 앞이다
+    from daily_report import mattermost_safe
+
 KST = timezone(timedelta(hours=9))
 WEBHOOK_ENV = "KKUGI_MM_WEBHOOK_URL"
 INTERVAL_SECONDS = 60
@@ -70,7 +75,9 @@ def _governor(control: dict) -> str | None:
     requested, scale = control.get("requested_scale"), control.get("scale")
     if requested is not None and scale is not None and scale < requested:
         last = (control.get("governor") or {}).get("last_change")
-        return f"거버너가 배율을 {requested} → {scale}로 낮췄다" + (f": {last}" if last else "")
+        # last_change는 시각·배율·이유가 든 사전이다. 사람이 읽을 이유 문장만 붙인다
+        reason = last.get("reason") if isinstance(last, dict) else last
+        return f"거버너가 배율을 {requested} → {scale}로 낮췄다" + (f". {reason}" if reason else "")
     return None
 
 
@@ -164,7 +171,7 @@ def webhook_poster(url: str, post: Post, log: Callable[[str], None]) -> Callable
     def send(text: str) -> None:
         log(text)
         try:
-            post(url, json.dumps({"text": text}, ensure_ascii=False).encode("utf-8"))
+            post(url, json.dumps({"text": mattermost_safe(text)}, ensure_ascii=False).encode("utf-8"))
         except Exception as e:  # 전송이 실패해도 감시는 계속한다. 로그에는 남는다
             log(f"Mattermost 전송 실패: {e}")
     return send
