@@ -9,18 +9,22 @@
 
 ```text
 관측 서버 (kkugi-observability-lightsail, ssh kkugi-obs)      앱 서버 (kkugi-backend-lightsail)
- ├─ Master: 통계 집계, 계정 범위 확인, 조절 경로, 거버너          ├─ nginx → backend (Spring)
- ├─ Worker 12개: 풀마다 하나, 세션 실행 ────────────────────────▶ └─ MySQL
- └─ Prometheus·Grafana·Tempo·Loki: 지표·추적·로그 수집
+ ├─ Master: 통계 집계, 계정 범위 확인, 조절 경로, 거버너          └─ nginx → backend (Spring)
+ ├─ Worker 12개: 풀마다 하나, 세션 실행 ────────────────────────▶          │
+ └─ Prometheus·Grafana·Tempo·Loki: 지표·추적·로그 수집                     ▼
+                                                               데이터 서버 (SSAFY EC2, ssh kkugi-data)
+                                                                └─ MySQL, Redis
 ```
 
 | 용어 | 뜻 |
 |---|---|
-| 앱 서버 | 꾸기 backend와 MySQL이 도는 Lightsail 서버 `kkugi-backend-lightsail` |
+| 앱 서버 | 꾸기 backend가 도는 Lightsail 서버 `kkugi-backend-lightsail` |
+| 데이터 서버 | MySQL과 Redis가 도는 SSAFY EC2 서버(`t3.xlarge`). 접속은 `ssh kkugi-data`. Prometheus에서는 `instance="data-server"`다 |
 | 관측 서버 | 발생기와 Prometheus·Grafana가 도는 Lightsail 서버 `kkugi-observability-lightsail`. 접속은 `ssh kkugi-obs` |
 | backend | 꾸기 API 서버(Spring). 서비스 저장소가 따로 있다 |
 | 발생기 | 이 저장소의 인공 트래픽 발생기. Locust로 만들었다 |
 | Locust | 파이썬 부하 테스트 도구. 발생기의 실행과 통계 집계를 맡는다 |
+| k6 | 부하 테스트 도구. 요청 속도를 고정하는 열린 모델로 처리량 한계를 잴 때 쓴다. 상시 트래픽에는 쓰지 않는다([결정 기록](../notes/decisions/2026-11-05-locust-over-k6.md)) |
 | Master | Locust 제어 프로세스. Worker의 통계를 모으고, 웹 UI와 조절 경로(`/kkugi/*`)를 연다. 세션은 실행하지 않는다 |
 | Worker | 실제로 세션을 실행하는 Locust 프로세스. 풀 하나를 맡는다. 상시 Worker는 12개다 |
 | 실행기 (Locust User) | Worker 안에서 세션을 하나씩 꺼내 실행하는 슬롯. 실행기 수가 동시에 진행할 수 있는 세션 수이고 계정 수와 다르다. `KKUGI_USERS`로 정한다 |
@@ -78,6 +82,8 @@ Locust 통계와 CSV에 남는 이름이다. 자세한 표는 README의 "통계 
 | 클라이언트 기준 | 발생기(Locust)가 잰 응답 시간. 네트워크와 TLS 연결 시간이 들어 있다 |
 | 서버 기준 | backend가 잰 처리 시간(`http_server_requests_seconds`). 네트워크 시간이 빠져 클라이언트 기준보다 조금 작다 |
 | 기준선 | 개선 전후를 비교하려고 남긴 측정 기록. `notes/decisions/`의 `*-baseline-*.md` |
+| 목표 부하 | 성능 목표를 판정할 때 k6로 주는 혼합 요청의 속도(RPS). 20,000명 피크 추정에서 정한다([성능 목표](../notes/decisions/2026-11-11-performance-goal.md)) |
+| 한계 | k6로 요청 속도를 계단식으로 올릴 때 응답 시간 기준(p95 300ms)이 처음 깨지는 RPS |
 | 자정 급증 | 매일 00:01-00:02에 HTTP 요청은 그대로인데 DB TPS가 1분 기준 수십으로 오르는 현상. backend 배치 작업으로 추정한다(확인 필요) |
 
 ## 서버와 인프라

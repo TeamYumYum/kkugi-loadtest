@@ -66,3 +66,4 @@
 | 2026-11-09 | [식사 양을 목표 칼로리로 정한다](decisions/2026-11-09-meal-portions-by-calorie.md) | 일부 대체됨 |
 | 2026-11-09 | [하루 목표를 지키는 무리: 절반 90%, 절반 60%](decisions/2026-11-09-intake-adherence-groups.md) | 결정 |
 | 2026-11-09 | [상시 트래픽을 흘리는 이유와 다음 방향](decisions/2026-11-09-why-continuous-traffic.md) | 결정 |
+| 2026-11-11 | [backend 성능 개선: 지금 상태와 목표](decisions/2026-11-11-performance-goal.md) | 일부 미결 |
