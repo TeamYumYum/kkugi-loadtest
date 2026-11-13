@@ -67,3 +67,4 @@
 | 2026-11-09 | [하루 목표를 지키는 무리: 절반 90%, 절반 60%](decisions/2026-11-09-intake-adherence-groups.md) | 결정 |
 | 2026-11-09 | [상시 트래픽을 흘리는 이유와 다음 방향](decisions/2026-11-09-why-continuous-traffic.md) | 결정 |
 | 2026-11-11 | [backend 저부하 지연 해결과 처리 한계 확인](decisions/2026-11-11-low-load-latency.md) | 일부 미결 |
+| 2026-11-13 | [하루 트래픽 통계: 기준선 기록에 없던 엿새](decisions/2026-11-13-daily-traffic-unrecorded-days.md) | 결정 |
