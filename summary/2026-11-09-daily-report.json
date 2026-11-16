@@ -1,0 +1,375 @@
+{
+  "date": "2026-11-09",
+  "traffic": {
+    "http_requests": 158196,
+    "avg_tps": 1.8363281794121744,
+    "peak_hour_tps": 9.43848930852541,
+    "peak_hour": "23시",
+    "peak_minute_tps": 21.483333333333334,
+    "peak_minute_at": "23:15",
+    "sessions": 21062,
+    "http_failures": 7,
+    "session_failures": 7,
+    "missed_sessions": 0,
+    "covered_hours": 23.93
+  },
+  "hourly": [
+    {
+      "hour": 0,
+      "tps": 0.4255968906163243,
+      "sessions_per_s": 0.10660744031093837,
+      "db_tps": 8.449372384937238
+    },
+    {
+      "hour": 1,
+      "tps": 0.04637600666481533,
+      "sessions_per_s": 0.0116634268258817,
+      "db_tps": 1.0460251046025104
+    },
+    {
+      "hour": 2,
+      "tps": 0.04332129963898917,
+      "sessions_per_s": 0.010830324909747292,
+      "db_tps": 0.07977684797768479
+    },
+    {
+      "hour": 3,
+      "tps": 0.03221327409053041,
+      "sessions_per_s": 0.008053318522632602,
+      "db_tps": 0.06582984658298466
+    },
+    {
+      "hour": 4,
+      "tps": 0.029991668980838656,
+      "sessions_per_s": 0.007497917245209664,
+      "db_tps": 0.06694560669456066
+    },
+    {
+      "hour": 5,
+      "tps": 0.03887808941960567,
+      "sessions_per_s": 0.009719522354901417,
+      "db_tps": 0.07531380753138076
+    },
+    {
+      "hour": 6,
+      "tps": 1.6251041377395168,
+      "sessions_per_s": 0.24715356845320743,
+      "db_tps": 1.7179916317991633
+    },
+    {
+      "hour": 7,
+      "tps": 2.879200222160511,
+      "sessions_per_s": 0.4812552068869758,
+      "db_tps": 2.913528591352859
+    },
+    {
+      "hour": 8,
+      "tps": 1.2271591224659817,
+      "sessions_per_s": 0.24632046653707304,
+      "db_tps": 1.193863319386332
+    },
+    {
+      "hour": 9,
+      "tps": 0.4273812829769508,
+      "sessions_per_s": 0.09969452929741739,
+      "db_tps": 0.497907949790795
+    },
+    {
+      "hour": 10,
+      "tps": 0.3857261871702305,
+      "sessions_per_s": 0.09663982227159122,
+      "db_tps": 0.4708507670850767
+    },
+    {
+      "hour": 11,
+      "tps": 1.770848246241947,
+      "sessions_per_s": 0.24986067082523775,
+      "db_tps": 2.5433751743375175
+    },
+    {
+      "hour": 12,
+      "tps": 3.000555401277423,
+      "sessions_per_s": 0.4990280477645099,
+      "db_tps": 2.8320781032078104
+    },
+    {
+      "hour": 13,
+      "tps": 1.1625,
+      "sessions_per_s": 0.23944444444444443,
+      "db_tps": 1.0772663877266389
+    },
+    {
+      "hour": 14,
+      "tps": 0.5416666666666666,
+      "sessions_per_s": 0.1044481981981982,
+      "db_tps": 1.7578800557880057
+    },
+    {
+      "hour": 15,
+      "tps": 1.1491666666666667,
+      "sessions_per_s": 0.19972222222222222,
+      "db_tps": 2.499860529986053
+    },
+    {
+      "hour": 16,
+      "tps": 1.205498472646487,
+      "sessions_per_s": 0.2204943071369064,
+      "db_tps": 2.4239888423988845
+    },
+    {
+      "hour": 17,
+      "tps": 4.160510969175229,
+      "sessions_per_s": 0.49847264648708695,
+      "db_tps": 37.40111576011157
+    },
+    {
+      "hour": 18,
+      "tps": 6.101083032490974,
+      "sessions_per_s": 0.8078311580116634,
+      "db_tps": 62.114365411436545
+    },
+    {
+      "hour": 19,
+      "tps": 3.5648430991391282,
+      "sessions_per_s": 0.5673424048875313,
+      "db_tps": 63.7116293263286
+    },
+    {
+      "hour": 20,
+      "tps": 1.9166898083865593,
+      "sessions_per_s": 0.25326298250485973,
+      "db_tps": 50.99302649930265
+    },
+    {
+      "hour": 21,
+      "tps": 1.8317134129408497,
+      "sessions_per_s": 0.24826437100805332,
+      "db_tps": 49.085913528591355
+    },
+    {
+      "hour": 22,
+      "tps": 1.0358333333333334,
+      "sessions_per_s": 0.18888888888888888,
+      "db_tps": 62.61813110181311
+    },
+    {
+      "hour": 23,
+      "tps": 9.43848930852541,
+      "sessions_per_s": 0.46320466537073035,
+      "db_tps": 72.07308228730822
+    }
+  ],
+  "apis": [
+    {
+      "api": "GET /api/v1/daily-summaries/{date}",
+      "count": 34923,
+      "p50_ms": 42.58819036185748,
+      "p95_ms": 384.7641940326082,
+      "p99_ms": 734.2817111242617
+    },
+    {
+      "api": "GET /api/v1/daily-goals/{goalDate}",
+      "count": 25064,
+      "p50_ms": 21.138238936715478,
+      "p95_ms": 265.9067158956523,
+      "p99_ms": 521.9965654415581
+    },
+    {
+      "api": "GET /api/v1/growth/me",
+      "count": 25058,
+      "p50_ms": 110.2957787816694,
+      "p95_ms": 441.0095616345092,
+      "p99_ms": 785.9304076432128
+    },
+    {
+      "api": "POST /api/v1/auth/refresh",
+      "count": 17858,
+      "p50_ms": 22.961172093614245,
+      "p95_ms": 115.05379436506256,
+      "p99_ms": 264.7724300699981
+    },
+    {
+      "api": "GET /api/v1/foods",
+      "count": 17536,
+      "p50_ms": 27.91042226287554,
+      "p95_ms": 63.72458334624996,
+      "p99_ms": 87.98457262696695
+    },
+    {
+      "api": "GET /api/v1/meals",
+      "count": 9188,
+      "p50_ms": 45.75151608902077,
+      "p95_ms": 299.22031572023786,
+      "p99_ms": 602.0559873225005
+    },
+    {
+      "api": "POST /api/v1/meals",
+      "count": 8765,
+      "p50_ms": 30.630991498788372,
+      "p95_ms": 73.69691134075148,
+      "p99_ms": 88.80481028664742
+    },
+    {
+      "api": "POST /api/v1/auth/login/dev",
+      "count": 3026,
+      "p50_ms": 76.86463885599873,
+      "p95_ms": 371.95998224999994,
+      "p99_ms": 878.8065501071437
+    },
+    {
+      "api": "POST /api/v1/members/me/onboarding",
+      "count": 3018,
+      "p50_ms": 91.91620010897437,
+      "p95_ms": 424.34865178082157,
+      "p99_ms": 867.1743470571461
+    },
+    {
+      "api": "GET /api/v1/routines",
+      "count": 1992,
+      "p50_ms": 35.26553999253731,
+      "p95_ms": 213.62988154999994,
+      "p99_ms": 382.25208891999944
+    },
+    {
+      "api": "GET /api/v1/workout-schedules",
+      "count": 1992,
+      "p50_ms": 29.36012725,
+      "p95_ms": 228.94820897391304,
+      "p99_ms": 430.68977546666633
+    },
+    {
+      "api": "GET /api/v1/workout-sessions",
+      "count": 1992,
+      "p50_ms": 22.237462175373132,
+      "p95_ms": 149.42906928,
+      "p99_ms": 315.6460090380948
+    },
+    {
+      "api": "GET /api/v1/workout-sessions/recent-sets",
+      "count": 1992,
+      "p50_ms": 27.028447855753647,
+      "p95_ms": 127.92109294074078,
+      "p99_ms": 263.2904424799999
+    },
+    {
+      "api": "POST /api/v1/workout-sessions",
+      "count": 1991,
+      "p50_ms": 152.64697059830684,
+      "p95_ms": 318.65373886856,
+      "p99_ms": 443.3221547163145
+    },
+    {
+      "api": "GET /api/v1/weekly-workout-goal/me",
+      "count": 1985,
+      "p50_ms": 25.847678227272727,
+      "p95_ms": 60.84918040340907,
+      "p99_ms": 87.60338441617637
+    },
+    {
+      "api": "GET /api/v1/weight-records/latest",
+      "count": 1178,
+      "p50_ms": 20.768040225352113,
+      "p95_ms": 57.410453381578925,
+      "p99_ms": 79.75786787454523
+    },
+    {
+      "api": "GET /api/v1/weight-records",
+      "count": 1171,
+      "p50_ms": 17.89663375125628,
+      "p95_ms": 27.490814097222202,
+      "p99_ms": 59.42790782499994
+    },
+    {
+      "api": "PUT /api/v1/weight-records/{recordedOn}",
+      "count": 1171,
+      "p50_ms": 20.286113052238804,
+      "p95_ms": 32.57576012499995,
+      "p99_ms": 62.93176540923065
+    },
+    {
+      "api": "POST /api/v1/workout-schedules",
+      "count": 1104,
+      "p50_ms": 21.45385527492225,
+      "p95_ms": 29.639747499999988,
+      "p99_ms": 62.112979519999996
+    },
+    {
+      "api": "PATCH /api/v1/meals/{mealId}",
+      "count": 1078,
+      "p50_ms": 27.886160040697675,
+      "p95_ms": 64.11907664615381,
+      "p99_ms": 86.9161465945454
+    },
+    {
+      "api": "GET /api/v1/exercises",
+      "count": 498,
+      "p50_ms": 23.404339105726873,
+      "p95_ms": 45.96957010000002,
+      "p99_ms": 89.7021812099998
+    },
+    {
+      "api": "PUT /api/v1/weekly-workout-goal/me",
+      "count": 409,
+      "p50_ms": 97.49068098317308,
+      "p95_ms": 144.843296975,
+      "p99_ms": 175.9091081387499
+    },
+    {
+      "api": "POST /api/v1/routines",
+      "count": 204,
+      "p50_ms": 76.51664853271029,
+      "p95_ms": 128.06608122499998,
+      "p99_ms": 222.80142616000023
+    }
+  ],
+  "resources": {
+    "db_commits": 1538970.18232332,
+    "db_tps_1m_max": 87.6,
+    "hikari_active_max": 10.0,
+    "hikari_pending_max": 70.0,
+    "mysql_threads_running_max": 5.0,
+    "mysql_slow_queries": 0.0,
+    "jvm_cpu_avg": 0.03442919305188423,
+    "jvm_cpu_max": 0.7145299145299145,
+    "heap_max_mb": 435.5,
+    "gc_pause_total_s": 67.1426567112346,
+    "gc_pause_max_ms": 159.0
+  },
+  "restarts": [
+    "09:49:51",
+    "10:14:44",
+    "10:45:59",
+    "11:18:53",
+    "14:21:04",
+    "14:35:04",
+    "15:36:59",
+    "17:55:44"
+  ],
+  "failures": null,
+  "thresholds": {
+    "max_http_failures": 0,
+    "max_missed_sessions": 0,
+    "max_api_p95_ms": 300.0,
+    "max_db_tps_1m": 100.0,
+    "max_pending_connections": 0,
+    "p95_growth_ratio": 1.5,
+    "min_locust_coverage_hours": 23.0
+  },
+  "cautions": [
+    "HTTP 실패 7건",
+    "`GET /api/v1/daily-summaries/{date}` p95 384.8ms (기준 300ms)",
+    "`GET /api/v1/growth/me` p95 441.0ms (기준 300ms)",
+    "`POST /api/v1/auth/login/dev` p95 372.0ms (기준 300ms)",
+    "`POST /api/v1/members/me/onboarding` p95 424.3ms (기준 300ms)",
+    "`POST /api/v1/workout-sessions` p95 318.7ms (기준 300ms)",
+    "커넥션 대기 최대 70",
+    "backend 재시작: 09:49:51, 10:14:44, 10:45:59, 11:18:53, 14:21:04, 14:35:04, 15:36:59, 17:55:44"
+  ],
+  "source_histories": [
+    "kkugi-20261104-090514_stats_history.csv",
+    "kkugi-20261109-111459_stats_history.csv",
+    "kkugi-20261109-113822_stats_history.csv",
+    "kkugi-20261109-145702_stats_history.csv"
+  ],
+  "collection_note": "All four histories with measured intervals on this day were combined; intervals spanning restarts and gaps over 180s are excluded. No previous-day JSON exists for comparison. Server metrics cover the whole day."
+}
