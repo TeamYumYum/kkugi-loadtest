@@ -10,9 +10,6 @@ state/
 # 로컬 비밀값
 .env
 
-# 하루 요약 도구가 만든 산출물. 다시 만들 수 있고 수치는 notes/decisions/에 기록한다
-summary/*-daily-report.*
-
 # 서버 공인 IP가 들어 있는 SSH 설정 안내
 kkugi-ssh-tunnel-prompt.md
 
