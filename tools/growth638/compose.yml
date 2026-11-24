@@ -1,0 +1,67 @@
+name: kkugi-growth638
+services:
+  mysql:
+    image: mysql:8.4@sha256:c592c15aaf4a1961e15d82eb31ea5987dda862d1c4b1e93424438c0e91dc1f8d
+    cpus: 2
+    mem_limit: 2g
+    environment:
+      TZ: Asia/Seoul
+      MYSQL_ROOT_PASSWORD: local-root
+      MYSQL_DATABASE: nyamnyam
+      MYSQL_USER: bench
+      MYSQL_PASSWORD: local-bench
+    command: [--performance-schema=ON, --default-time-zone=+09:00]
+    healthcheck:
+      test: [CMD-SHELL, "mysql -uroot -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 2s
+      retries: 60
+  redis:
+    image: redis:7.4@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
+    cpus: 0.5
+    mem_limit: 256m
+  proxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0@sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e
+    cpus: 1
+    mem_limit: 256m
+    ports:
+      - 127.0.0.1:16385:8474
+      - 127.0.0.1:16386:13306
+  app:
+    image: eclipse-temurin:25-jre-noble@sha256:f3dd0838e69b881cc382237d5901e74ae3705b1056ad964b2e0e523b174fef99
+    cpus: 2
+    mem_limit: 2g
+    command: [java, -XX:ActiveProcessorCount=2, -Xms512m, -Xmx1024m, -Duser.timezone=Asia/Seoul, -jar, /app.jar]
+    volumes:
+      - "${GROWTH638_JAR:-./compose.yml}:/app.jar:ro"
+    ports:
+      - 127.0.0.1:16380:8080
+      - 127.0.0.1:16381:8081
+    environment:
+      TZ: Asia/Seoul
+      DB_HOST: proxy
+      DB_PORT: 13306
+      DB_USERNAME: bench
+      DB_PASSWORD: local-bench
+      REDIS_HOST: redis
+      AUTH_JWT_SECRET: growth638-local-only-aaaaaaaaaaaaaaaaaaaa
+      AUTH_ACCESS_TTL_MINUTES: 240
+      AUTH_DEV_LOGIN_ENABLED: "true"
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 10
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 10
+      KKUGI_GROWTH_STARTUP_DELAY_MINUTES: 1440
+      PHOTO_MIGRATE_LEGACY: "false"
+      SERVER_TOMCAT_ACCESSLOG_ENABLED: "${GROWTH638_ACCESSLOG:-false}"
+      SERVER_TOMCAT_ACCESSLOG_DIRECTORY: /tmp/growth638-access
+      SERVER_TOMCAT_ACCESSLOG_ROTATE: "false"
+      SERVER_TOMCAT_ACCESSLOG_BUFFERED: "false"
+      SERVER_TOMCAT_ACCESSLOG_PATTERN: "%{begin:msec}t %{end:msec}t %s %U"
+  k6:
+    image: grafana/k6:1.5.0@sha256:2072ea9eafa596532d9aee0cc0e0a50cfb0e7fb703981a46179af5f4f22c5ea4
+    profiles: [load]
+    user: "0"
+    cpus: 2
+    mem_limit: 512m
+    volumes:
+      - .:/scenario:ro
+      - ../../state/growth638:/work

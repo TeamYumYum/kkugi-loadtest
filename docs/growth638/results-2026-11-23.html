@@ -1,0 +1,1603 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>성장 조회 성능 측정 결과 · 2026.11.23</title>
+<style>
+:root{--ink:#182b42;--muted:#56667a;--paper:#fff;--bg:#edf2f7;--line:#d9e2ec;--before:#7c6c97;--after:#167775;--blue:#2459a5;--warn:#885219;--soft:#eaf5f3}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.8 "Malgun Gothic","Apple SD Gothic Neo",sans-serif;word-break:keep-all}a{color:var(--blue);text-underline-offset:4px}button,select{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible{outline:3px solid #e5a84d;outline-offset:4px}header{background:#183750;color:white}.head{max-width:1180px;margin:auto;padding:48px 48px 38px}.mast{display:flex;justify-content:space-between;align-items:center;color:#cfdfed;font-size:14px;border-bottom:1px solid #ffffff30;padding-bottom:18px;gap:20px}.mast button{background:transparent;border:1px solid #ffffff60;color:white;padding:6px 15px;border-radius:5px}.head h1{font-size:clamp(30px,4vw,48px);letter-spacing:-.06em;line-height:1.35;margin:32px 0 16px}.head p{max-width:850px;color:#dce7ef;margin:0}.status{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}.tag{display:inline-block;padding:4px 12px;border-radius:4px;font-size:13px;font-weight:700;background:#ecf6f4;color:#145e5d}.tag.pending{background:#fff3de;color:#81501c}.layout{max-width:1180px;margin:0 auto;padding:32px 48px 70px}.toc{display:flex;gap:24px;flex-wrap:wrap;font-size:14px;padding-bottom:24px}.toc a{color:var(--muted);text-decoration:none}.section{background:white;padding:32px 36px;margin:0 0 22px;border:1px solid var(--line);border-radius:8px;scroll-margin-top:20px}h2{font-size:25px;letter-spacing:-.04em;line-height:1.4;margin:0 0 18px}h3{font-size:18px;margin:26px 0 10px}p{margin:10px 0 16px}.lead{font-size:18px;max-width:870px}.muted,.note{color:var(--muted)}.note{font-size:13px;line-height:1.8}.takeaways{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:28px}.takeaways>div{padding:0 20px 0 0;border-right:1px solid var(--line)}.takeaways>div:last-child{border:0}.big{display:block;font-size:35px;font-weight:800;letter-spacing:-.05em;color:var(--after);line-height:1.3}.takeaways p{font-size:14px;margin:9px 0}.label{font-size:13px;color:var(--muted)}.notice{padding:16px 20px;background:#fff6e8;border-left:4px solid #b47c31;margin:20px 0}.notice p{margin:0}.controls{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:20px}.seg{display:flex;background:#edf2f7;padding:4px;border-radius:6px;gap:3px}.seg button{border:0;background:transparent;color:var(--muted);padding:7px 16px;border-radius:4px;font-size:14px}.seg button[aria-pressed="true"]{background:white;color:var(--ink);box-shadow:0 1px 3px #182b421a;font-weight:700}.legend{display:flex;gap:20px;font-size:13px}.dot{display:inline-block;width:10px;height:10px;margin-right:7px;background:var(--before);border-radius:2px}.dot.after{background:var(--after)}.chartbox{padding:18px 12px 6px;background:#f8fafc;border:1px solid var(--line);border-radius:6px}.chartbox svg{width:100%;height:auto;display:block}.chart-summary{margin:16px 0 0;padding:14px 18px;background:var(--soft);font-size:15px;color:#185c5a}.table-wrap{overflow-x:auto;margin:15px 0}table{border-collapse:collapse;width:100%;font-size:14px;text-align:left;font-variant-numeric:tabular-nums}th{color:#455b72;font-weight:700;background:#f3f6f9}th,td{padding:12px 13px;border-bottom:1px solid var(--line);vertical-align:top}td.num,th.num{text-align:right;white-space:nowrap}td.good{color:var(--after);font-weight:700}caption{text-align:left;font-size:13px;color:var(--muted);padding-bottom:9px}code{font:13px/1.5 Consolas,monospace;background:#edf2f6;padding:2px 5px;border-radius:3px;overflow-wrap:anywhere}.path{overflow-wrap:anywhere;word-break:break-all}.twocol{display:grid;grid-template-columns:1fr 1fr;gap:28px}.flow{display:grid;grid-template-columns:1fr 32px 1fr;gap:14px;align-items:center;margin:24px 0}.flow>div{padding:20px;background:#f4f7fa;border-top:3px solid var(--before)}.flow>div:last-child{border-color:var(--after)}.flow strong{display:block}.flow p{font-size:14px;margin:8px 0 0}.arrow{font-size:24px;color:var(--muted);text-align:center}.event-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;background:var(--soft);padding:22px;margin:20px 0}.event-strip b{display:block;font-size:25px;color:var(--after)}.event-strip span{font-size:13px}.status-table td:first-child{min-width:120px}.pending-text{color:var(--warn);font-weight:700}.pass-text{color:var(--after);font-weight:700}ul{padding-left:22px}li{margin:9px 0}details{border-top:1px solid var(--line);padding:16px 0}summary{cursor:pointer;font-weight:700}footer{font-size:13px;color:var(--muted);padding:8px 0}footer p{margin:4px 0}.pill{display:inline-block;font-size:12px;padding:1px 7px;border:1px solid var(--line);border-radius:3px;margin-left:8px}.scroll-hint{display:none}
+@media(max-width:720px){.head{padding:28px 22px}.layout{padding:20px 14px 40px}.section{padding:24px 20px}.takeaways{grid-template-columns:1fr;gap:17px}.takeaways>div{border:0;border-bottom:1px solid var(--line);padding-bottom:15px}.takeaways>div:last-child{padding:0}.big{font-size:30px}.twocol{grid-template-columns:1fr;gap:0}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.event-strip{grid-template-columns:1fr;gap:12px}.event-strip>div{display:flex;align-items:center;justify-content:space-between;gap:15px}.event-strip b{font-size:22px}.toc{gap:12px 20px}.controls{gap:12px}.seg button{padding:7px 12px}.scroll-hint{display:block}.mast{font-size:12px}.mast button{white-space:nowrap}th,td{padding:10px}.chartbox{padding:10px 0}}
+@media print{body{background:white;font-size:11px}.head{padding:20px 0;color:var(--ink)}header{background:white;color:var(--ink)}.head p,.mast{color:var(--muted)}.head h1{font-size:30px;margin:15px 0}.mast button,.toc,.controls .seg{display:none}.layout{padding:15px 0;max-width:none}.section{padding:20px 0;border:0;border-top:1px solid var(--line);border-radius:0}.takeaways,.chartbox,table,.event-strip{break-inside:avoid}.note,table{font-size:10px}a{color:inherit}details{display:block}h2,h3{break-after:avoid}.chartbox svg{max-height:220px}.status{margin-top:10px}}
+</style>
+</head>
+<body>
+<header><div class="head"><div class="mast"><span>꾸기 / GET /api/v1/growth/me</span><span>측정일 2026.11.23 KST</span><button onclick="window.print()">인쇄 / PDF 저장</button></div><h1>조회에서 지급을 분리한 뒤,<br>무엇이 얼마나 빨라졌나.</h1><p>동일한 로컬 환경에서 전환 전후 두 버전을 비교했습니다. 조회 응답 시간뿐 아니라 DB 작업량, 저장 API, 비동기 처리의 누적 여부를 함께 확인했습니다.</p><div class="status"><span class="tag">로컬 비교 완료</span><span class="tag">혼합 부하 측정 완료</span><span class="tag pending">운영 하루 판정 보류</span></div></div></header>
+<main class="layout">
+<nav class="toc" aria-label="보고서 목차"><a href="#verdict">측정 결론</a><a href="#latency">응답 시간</a><a href="#cause">개선 원인</a><a href="#mixed">저장·비동기 처리</a><a href="#production">운영 관측</a><a href="#method">조건과 근거</a></nav>
+<section class="section" id="verdict"><h2>로컬에서는 조회 비용 감소와 응답 개선을 확인했습니다.</h2><p class="lead">순차 조회와 50건 몰림 모두 여섯 쌍의 비교에서 p95가 낮아졌습니다. 커넥션을 빌리는 횟수는 같았고, 지급 후보를 확인하는 SELECT가 줄었습니다.</p><div class="takeaways"><div><span class="label">순차 조회 p95 감소율</span><strong class="big" id="single-improvement">15~46%</strong><p>각 지연 조건을 두 번씩 짝지어 비교한 범위입니다.</p></div><div><span class="label">요청당 SELECT</span><strong class="big">약 14회 → 7회</strong><p>커넥션 획득은 전후 모두 요청당 2회였습니다.</p></div><div><span class="label">혼합 요청 결과</span><strong class="big" id="mixed-total">3,682건 성공</strong><p>실패·타임아웃·누락된 반복은 모두 0이었습니다.</p></div></div><div class="notice"><p><strong>운영 목표 달성까지 입증한 결과는 아닙니다.</strong> 작은 로컬 데이터와 짧은 부하에서 얻은 결과입니다. 현재 운영은 하루 자료가 부족하고, 시작 직후를 포함한 부분 관측에서는 300ms를 넘는 API도 확인됐습니다.</p></div></section>
+<section class="section" id="latency"><h2>DB 왕복 지연이 있는 조건에서도 개선됐습니다.</h2><p>세 조건에서 A→B와 B→A 순서로 실행했습니다. 그래프의 막대 하나는 한 실행의 p95이며, 반복별 p95를 합치거나 평균한 값이 아닙니다.</p><div class="controls"><div class="seg" role="group" aria-label="측정 시나리오"><button aria-pressed="true" data-mode="single_http">순차 조회</button><button aria-pressed="false" data-mode="burst_http">50건 몰림</button></div><div class="legend"><span><i class="dot"></i>전환 전</span><span><i class="dot after"></i>전환 후</span></div></div><div class="chartbox"><svg id="chart" viewBox="0 0 920 330" role="img" aria-label="지연 조건별 p95 비교"></svg></div><p class="chart-summary" id="chart-summary" aria-live="polite"></p><div class="table-wrap"><table><caption>동일 조건 두 번의 실행 범위입니다. 단위는 ms입니다.</caption><thead><tr><th>방향별 추가 지연</th><th class="num">실제 SQL RTT p50</th><th class="num">순차 p95 전 → 후</th><th class="num">50건 몰림 p95 전 → 후</th><th class="num">50건 전체 완료 전 → 후</th></tr></thead><tbody id="latency-rows"></tbody></table></div><p class="note">순차 조회는 실행당 100건, 총 1,200건입니다. 몰림은 실행당 50건, 총 600건이며 모두 성공했습니다. 발생기에서 50건의 시작 간격은 0.59~2.56ms였습니다. Toxiproxy의 1ms·2ms는 각 방향에 추가한 지연이며 실제 왕복 시간과 다릅니다.</p></section>
+<section class="section" id="cause"><h2>이번 비교에서 달라진 것은 조회의 DB 작업량입니다.</h2><div class="flow"><div><strong>전환 전 · 3d42e7b6</strong><p>지급 대상 확인과 조건부 지급을 수행한 뒤 성장 요약을 읽습니다.</p><p>SELECT 13.58~13.72회 / 커넥션 획득 2회</p></div><span class="arrow" aria-hidden="true">→</span><div><strong>전환 후 · fd45d8da</strong><p>성장 조회는 요약을 읽습니다. 누적 뱃지 지급은 저장 이벤트로 처리합니다.</p><p>SELECT 7회 / 커넥션 획득 2회</p></div></div><p>요청당 집계된 DB 문장은 <strong>18.58~18.72회에서 12회</strong>로 줄었습니다. SQL 왕복 시간이 길어지는 조건에서 조회 지연의 차이도 커졌습니다. 제거한 DB 작업이 응답 개선에 기여했다는 해석과 일치합니다.</p><p class="note">이 비교는 792의 내구 이벤트 발행과 790의 지급 분리를 함께 포함합니다. 이전 638 단계의 커넥션 획득 5회 → 2회를 이번 비교의 성과로 계산하지 않습니다. SQL 집계는 배경 릴레이·잠금 문장이 감지된 구간을 제외했으며, 스키마에 귀속된 문장만 포착합니다.</p><details><summary>별도 확인: 지급 대상이 남은 최초 조회</summary><p>첫 기록 뱃지 지급 행을 비운 동일한 초기 데이터에서, 자격을 갖춘 계정 10개로 최초 조회를 보냈습니다. 전환 전에는 지급 행 20건이 생겼고, 전환 후에는 0건이었습니다.</p><div class="table-wrap"><table><thead><tr><th>항목</th><th class="num">전환 전</th><th class="num">전환 후</th></tr></thead><tbody><tr><td>응답 p50</td><td class="num">64.6ms</td><td class="num">14.5ms</td></tr><tr><td>최대 응답 시간</td><td class="num">286.9ms</td><td class="num">37.0ms</td></tr><tr><td>조회 중 생성된 지급 행</td><td class="num">20건</td><td class="num">0건</td></tr></tbody></table></div><p class="note">버전별 10건의 소표본으로, 일반적인 응답 시간이나 지급 정확성 전체를 대표하지 않습니다.</p></details></section>
+<section class="section" id="mixed"><h2>저장과 조회를 함께 실행해도 이벤트는 누적되지 않았습니다.</h2><p>과거 23시 혼잡 분의 API 구성을 참고해 성장 조회 <strong>분당 180건</strong>, 식사 저장 <strong>105건</strong>, 운동 저장 <strong>20건</strong>을 설정했습니다. 전체 하루 트래픽 중 이 세 API를 선택한 혼합 시나리오입니다.</p><div class="table-wrap"><table><caption>저장·조회 혼합 부하의 p95입니다. 각 셀은 두 번 실행한 범위이며 단위는 ms입니다.</caption><thead><tr><th>방향별 추가 지연</th><th class="num">성장 조회 전 → 후</th><th class="num">식사 저장 전 → 후</th><th class="num">운동 저장 전 → 후</th></tr></thead><tbody id="mixed-rows"></tbody></table></div><p><strong>저장이 모든 조건에서 빨라졌다고 결론 내리지는 않습니다.</strong> 0ms 조건의 식사 저장 p95는 약 1.5~1.7ms 증가했습니다. 운동 저장은 0ms 반복 사이에 증감 방향이 달랐습니다. 1ms·2ms 조건에서는 두 저장 API의 p95도 낮아졌습니다.</p><div class="event-strip"><div><span>전환 후 이벤트 처리</span><b id="event-total">755 / 755건</b></div><div><span>관측된 미처리 최대</span><b>1~2건</b></div><div><span>부하 종료 후 미처리</span><b>0건</b></div></div><p class="note">식사 이벤트 631건과 운동 이벤트 124건을 모두 처리 표시했습니다. 관측된 가장 오래된 미처리 이벤트의 나이는 214.7ms였으며, 이벤트 관측의 최대 간격은 1.04초였습니다. 순간 최댓값을 놓칠 수 있고, 이 값은 지급 지연 p95가 아닙니다. 운동 저장은 실행당 20~21건으로 p95가 상위 한두 건에 민감합니다. 각 혼합 실행은 약 1분이며 장시간 지속 성능은 별도 관측이 필요합니다.</p></section>
+<section class="section" id="production"><h2>운영의 완전한 하루 판정은 남아 있습니다.</h2><p>11월 23일 11:53경 재시작부터 16:13경까지 읽기 전용으로 관측했습니다. 8,000개 계정 구간, Worker 12개, 실행기 540개, 적용 배율 1.0을 확인했습니다.</p><div class="table-wrap"><table class="status-table"><thead><tr><th>운영 기준</th><th>현재 확인한 내용</th><th>판정</th></tr></thead><tbody><tr><td>모든 API 하루 p95 ≤ 300ms</td><td>시작 직후 포함 부분 구간에서 8개 API가 300ms를 초과했습니다. 성장 조회 약 820ms, 식사 저장 약 660ms였습니다.</td><td class="pending-text">하루 판정 보류</td></tr><tr><td>재시작 직후 5분 제외 커넥션 대기 0</td><td>관측된 대기 표본의 최댓값은 0이었습니다. 15초 수집 사이의 순간 대기는 확인할 수 없습니다.</td><td class="pending-text">부분 확인</td></tr><tr><td>홈 API 혼잡 시간 p95 ≤ 새벽의 2배</td><td>새벽·오전·18시 구간이 없어 같은 날 비교를 할 수 없습니다.</td><td class="pending-text">자료 부족</td></tr><tr><td>비동기 지급 지연 p95</td><td>Timer에 히스토그램 버킷이 없습니다. 식사 저장·변경 이벤트의 구간 최댓값은 약 1.58초·1.15초였습니다.</td><td class="pending-text">현재 지표로 계산 불가</td></tr></tbody></table></div><div class="notice"><p><strong>12시 이후의 낮은 응답 시간만으로 운영 개선율을 계산하면 안 됩니다.</strong> 이 구간 성장 조회 p95는 77.0ms, 식사 저장은 86.7ms였지만, 인공 요청은 약 1,124건이고 운동 저장 표본은 없었습니다. 과거 혼잡 시간보다 부하가 작습니다.</p></div><p>다음 완전 관측 후보는 <strong>11월 24일 00:00~11월 25일 00:00 KST</strong>입니다. 정상 실행이 유지되면 25일에 하루 자료로 판정할 수 있습니다. 이 보고서는 11월 23일 측정 자료를 정리한 것이며, 이후 운영 결과를 반영한 보고서는 아닙니다.</p><p class="note">운영 이미지에 revision 라벨이 없어 실행 이미지와 서버 체크아웃(fd45d8da)의 정확한 일치는 확인이 필요합니다. Timer는 저장 커밋이 아니라 발행 기록 생성 시각부터 핸들러 성공 후 처리 표시 직전까지를 측정합니다.</p></section>
+<section class="section" id="method"><h2>같은 환경을 비교했고, 과거 자료로 부하를 구성했습니다.</h2><div class="twocol"><div><h3>비교 환경</h3><ul><li>전환 전 <code>3d42e7b6</code>, 전환 후 <code>fd45d8da</code>를 비교했습니다.</li><li>Windows Docker에서 앱과 MySQL에 각각 2 CPU·2GiB를 배정하고, Hikari 풀은 10개로 고정했습니다.</li><li>Temurin 25, MySQL 8.4.10, Redis 7.4.11을 사용했습니다.</li><li>각 조건에 동일한 SQL 덤프와 빈 Redis를 적용하고 실행 순서를 교대했습니다.</li></ul></div><div><h3>데이터와 적용 범위</h3><ul><li>계정 64개, 식사 96건, 운동 32건, 하루 판정 448건, 주간 판정 64건으로 시작했습니다.</li><li>32개 계정은 초기 지급을 마쳤고, 나머지 32개는 온보딩만 마친 상태였습니다.</li><li>로컬 절대 시간은 이 PC와 데이터 구성에만 적용됩니다. 운영의 데이터 규모를 재현한 시험은 아닙니다.</li><li>하루 전체 활동, AI 배치, 최초 기동 백필, 장애 복구 검증은 이번 로컬 비교에 포함되지 않습니다.</li></ul></div></div><h3>백업에서 확인한 근거</h3><p>11월 10일·17일 관측 아카이브의 SHA-256을 대조했습니다. 11월 17일 백업에서 Prometheus 블록 5개와 Tempo 블록 1개를 복원해 조회했습니다. Locust CSV는 서버에 남은 원본을 읽었습니다.</p><div class="table-wrap"><table><thead><tr><th>자료</th><th>확인한 내용</th><th>활용</th></tr></thead><tbody><tr><td>Locust / Prometheus</td><td>11월 10일 HTTP 전체 228,513건. 혼잡 분 세 API 185·109·22건.</td><td>분당 180·105·20건의 혼합 구성 근거</td></tr><tr><td>복원 Tempo</td><td>11월 11일 07:15~07:17 각 분의 0~1초에 성장 조회 64·62·61건이 집중됐습니다.</td><td>동시 50건 몰림 조건의 근거</td></tr><tr><td>과거 기준선</td><td>11월 10일 성장 조회 하루 p95 632.8ms, 11월 12일 412.4ms</td><td>문제의 배경 자료. 로컬 결과와 직접 개선율 비교는 하지 않습니다.</td></tr></tbody></table></div><p class="note">과거 추적과 이번 전환 전 커밋은 서로 다른 시점입니다. 복원 추적은 187개로 기존 기록의 152개와 차이가 있어 추출 조건 확인이 필요합니다. 자료는 API 비율·몰림·내부 동작을 확인하는 데 사용했으며, 과거 요청을 완전히 재생한 것은 아닙니다.</p></section>
+<section class="section" id="evidence"><h2>실행별 수치와 원자료</h2><details><summary>12개 실행의 p95와 커넥션 획득 횟수 보기</summary><div class="table-wrap"><table><thead><tr><th>실행</th><th class="num">순차 p95</th><th class="num">몰림 p95</th><th class="num">식사 저장 p95</th><th class="num">운동 저장 p95</th><th class="num">획득 / 요청</th></tr></thead><tbody id="raw-rows"></tbody></table></div><p class="note">응답 시간 단위는 ms입니다. 각 실행의 표본 수, p50·최대, 실제 요청률과 이벤트 관측은 집계 JSON에 있습니다.</p></details><ul><li><a href="results-2026-11-23.md">측정 결과 원문</a>: 결과와 해석, 운영 관측의 상세 내용을 확인할 수 있습니다.</li><li><a href="matrix-2026-11-23.json">반복 실행 집계 JSON</a>: 이 HTML의 비교 그래프와 표에 사용한 자료입니다.</li><li><a href="arrival-2026-11-23.json">서버 도착 시각 및 최초 지급 경로 집계</a>: 별도 소표본 확인 자료입니다.</li><li><a href="README.md">재실행 절차와 운영 하루 집계 명령</a>: 환경·빌드·시험을 다시 실행할 수 있습니다.</li></ul><p class="note">로컬 원자료 경로: <code>kkugi-loadtest/state/growth638</code>. 토큰과 요청 본문 등 원자료는 이 HTML에 포함하지 않았습니다. 그래프 데이터와 스타일은 파일 내부에 있어 인터넷 연결 없이 열 수 있습니다.</p></section>
+<footer><p>꾸기 성장 조회 성능 측정 결과 / 2026.11.23</p><p>백분위 p95는 요청 95%가 해당 시간 안에 끝났다는 뜻입니다. 성공 요청만의 속도와 함께 실패·타임아웃·누락도 확인했습니다.</p></footer>
+</main>
+<script id="measurement-data" type="application/json">[
+  {
+    "run": "r1-before-0ms",
+    "latency_ms_per_direction": 0,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 0.9873000017250888,
+      "p95_ms": 1.4503999991575256,
+      "max_ms": 5.789400001958711
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 18.799900000885827,
+      "p95_ms": 24.639399998704903,
+      "max_ms": 34.183200001280056
+    },
+    "single_db": {
+      "isolated_requests": 100,
+      "excluded_background_requests": 0,
+      "sql_statements_per_request": 18.72,
+      "sql_selects_per_request": 13.72,
+      "sql_statements_by_verb": {
+        "SET": 400,
+        "SELECT": 1372,
+        "COMMIT": 100
+      },
+      "sql_server_ms_per_request": 2.69372874,
+      "select_server_ms_per_request": 2.3764539600000005,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.039215625,
+      "hikari_usage_ms_per_request": 13.359999999999998
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 218.710132,
+      "p95_ms": 327.514963,
+      "max_ms": 410.194437,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 1.1799335479736328,
+      "completion_span_ms": 414.93892669677734
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 181,
+        "p50_ms": 15.970812,
+        "p95_ms": 25.690734,
+        "max_ms": 46.356984,
+        "configured_per_min": 180,
+        "started": 181,
+        "completed": 181,
+        "status": {
+          "200": 181
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0166666666666666,
+        "completed_rps": 3.0166666666666666,
+        "arrival_span_ms": 61573.49705696106,
+        "completion_span_ms": 61586.3299369812,
+        "observed_start_rps": 2.9233356655621443,
+        "observed_completion_rps": 2.9389638932082813
+      },
+      "meal": {
+        "n": 105,
+        "p50_ms": 33.649885,
+        "p95_ms": 52.418601,
+        "max_ms": 60.985019,
+        "configured_per_min": 105,
+        "started": 105,
+        "completed": 105,
+        "status": {
+          "201": 105
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.75,
+        "completed_rps": 1.75,
+        "arrival_span_ms": 61001.48797035217,
+        "completion_span_ms": 61023.066997528076,
+        "observed_start_rps": 1.7048764458097463,
+        "observed_completion_rps": 1.7206608118247047
+      },
+      "workout": {
+        "n": 21,
+        "p50_ms": 41.302254,
+        "p95_ms": 57.216529,
+        "max_ms": 105.687449,
+        "configured_per_min": 20,
+        "started": 21,
+        "completed": 21,
+        "status": {
+          "201": 21
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.35,
+        "completed_rps": 0.35,
+        "arrival_span_ms": 61573.46200942993,
+        "completion_span_ms": 61612.06102371216,
+        "observed_start_rps": 0.32481525883564927,
+        "observed_completion_rps": 0.34084235539398516
+      }
+    },
+    "events": null
+  },
+  {
+    "run": "r1-after-0ms",
+    "latency_ms_per_direction": 0,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 0.6591999990632758,
+      "p95_ms": 0.9245000001101289,
+      "max_ms": 1.071299997420283
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 13.594799998827511,
+      "p95_ms": 17.808900000090944,
+      "max_ms": 28.444699997635325
+    },
+    "single_db": {
+      "isolated_requests": 70,
+      "excluded_background_requests": 30,
+      "sql_statements_per_request": 12.0,
+      "sql_selects_per_request": 7.0,
+      "sql_statements_by_verb": {
+        "SET": 280,
+        "SELECT": 490,
+        "COMMIT": 70
+      },
+      "sql_server_ms_per_request": 1.4740564285714288,
+      "select_server_ms_per_request": 1.1402582285714287,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.07032580714285716,
+      "hikari_usage_ms_per_request": 8.257142857142858
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 177.510255,
+      "p95_ms": 196.51081,
+      "max_ms": 198.927023,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 0.5948543548583984,
+      "completion_span_ms": 199.97382164001465
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 180,
+        "p50_ms": 10.815544,
+        "p95_ms": 14.482666,
+        "max_ms": 22.363846,
+        "configured_per_min": 180,
+        "started": 180,
+        "completed": 180,
+        "status": {
+          "200": 180
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0,
+        "completed_rps": 3.0,
+        "arrival_span_ms": 60182.09385871887,
+        "completion_span_ms": 60192.18182563782,
+        "observed_start_rps": 2.974306617184397,
+        "observed_completion_rps": 2.9904215886610728
+      },
+      "meal": {
+        "n": 105,
+        "p50_ms": 27.991169,
+        "p95_ms": 53.964406,
+        "max_ms": 91.903879,
+        "configured_per_min": 105,
+        "started": 105,
+        "completed": 105,
+        "status": {
+          "201": 105
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.75,
+        "completed_rps": 1.75,
+        "arrival_span_ms": 59943.77088546753,
+        "completion_span_ms": 59983.82496833801,
+        "observed_start_rps": 1.734959253709767,
+        "observed_completion_rps": 1.7504718989731551
+      },
+      "workout": {
+        "n": 20,
+        "p50_ms": 28.047297,
+        "p95_ms": 39.039364,
+        "max_ms": 39.129247,
+        "configured_per_min": 20,
+        "started": 20,
+        "completed": 20,
+        "status": {
+          "201": 20
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.3333333333333333,
+        "completed_rps": 0.3333333333333333,
+        "arrival_span_ms": 57515.48910140991,
+        "completion_span_ms": 57544.65317726135,
+        "observed_start_rps": 0.3303457954864934,
+        "observed_completion_rps": 0.3475561828201783
+      }
+    },
+    "events": {
+      "handlers": {
+        "growth.badge-award-on-meal-recorded": {
+          "published": 105,
+          "processed": 105
+        },
+        "growth.badge-award-on-workout-completed": {
+          "published": 20,
+          "processed": 20
+        }
+      },
+      "samples": 82,
+      "sampling_max_gap_s": 0.930978,
+      "sampling_errors": [],
+      "peak_pending_sampled": 1,
+      "oldest_pending_sampled_ms": 38.898,
+      "pending_at_stop": 0,
+      "pending_after_drain": 0
+    }
+  },
+  {
+    "run": "r2-before-0ms",
+    "latency_ms_per_direction": 0,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 0.6634000019403175,
+      "p95_ms": 0.9396999994351063,
+      "max_ms": 1.1092999993707053
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 18.374100000073668,
+      "p95_ms": 22.311900000204332,
+      "max_ms": 24.955700002465164
+    },
+    "single_db": {
+      "isolated_requests": 100,
+      "excluded_background_requests": 0,
+      "sql_statements_per_request": 18.72,
+      "sql_selects_per_request": 13.72,
+      "sql_statements_by_verb": {
+        "SET": 400,
+        "SELECT": 1372,
+        "COMMIT": 100
+      },
+      "sql_server_ms_per_request": 2.6009864700000005,
+      "select_server_ms_per_request": 2.2960471900000003,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.03541573,
+      "hikari_usage_ms_per_request": 12.580000000000002
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 198.2794,
+      "p95_ms": 381.527678,
+      "max_ms": 384.596352,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 0.8530616760253906,
+      "completion_span_ms": 386.0349655151367
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 180,
+        "p50_ms": 15.058903,
+        "p95_ms": 18.56175,
+        "max_ms": 41.447666,
+        "configured_per_min": 180,
+        "started": 180,
+        "completed": 180,
+        "status": {
+          "200": 180
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0,
+        "completed_rps": 3.0,
+        "arrival_span_ms": 59954.65803146362,
+        "completion_span_ms": 59968.97196769714,
+        "observed_start_rps": 2.9855895417844356,
+        "observed_completion_rps": 3.001552204312569
+      },
+      "meal": {
+        "n": 106,
+        "p50_ms": 34.225826,
+        "p95_ms": 53.02567,
+        "max_ms": 178.527727,
+        "configured_per_min": 105,
+        "started": 106,
+        "completed": 106,
+        "status": {
+          "201": 106
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.7666666666666666,
+        "completed_rps": 1.7666666666666666,
+        "arrival_span_ms": 60287.86492347717,
+        "completion_span_ms": 60307.84797668457,
+        "observed_start_rps": 1.7416440295783493,
+        "observed_completion_rps": 1.7576485243011877
+      },
+      "workout": {
+        "n": 21,
+        "p50_ms": 29.926695,
+        "p95_ms": 42.650112,
+        "max_ms": 45.215228,
+        "configured_per_min": 20,
+        "started": 21,
+        "completed": 21,
+        "status": {
+          "201": 21
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.35,
+        "completed_rps": 0.35,
+        "arrival_span_ms": 60287.52398490906,
+        "completion_span_ms": 60324.08404350281,
+        "observed_start_rps": 0.3317435959885552,
+        "observed_completion_rps": 0.3481196661826778
+      }
+    },
+    "events": null
+  },
+  {
+    "run": "r2-after-0ms",
+    "latency_ms_per_direction": 0,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 0.9405999990121927,
+      "p95_ms": 1.1113999971712474,
+      "max_ms": 1.2403000000631437
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 15.173399999184767,
+      "p95_ms": 18.87960000021849,
+      "max_ms": 20.396799998707138
+    },
+    "single_db": {
+      "isolated_requests": 70,
+      "excluded_background_requests": 30,
+      "sql_statements_per_request": 12.0,
+      "sql_selects_per_request": 7.0,
+      "sql_statements_by_verb": {
+        "SET": 280,
+        "SELECT": 490,
+        "COMMIT": 70
+      },
+      "sql_server_ms_per_request": 1.6473584142857145,
+      "select_server_ms_per_request": 1.2831178714285716,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.06452895714285714,
+      "hikari_usage_ms_per_request": 9.528571428571428
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 126.884441,
+      "p95_ms": 224.250564,
+      "max_ms": 226.060942,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 1.2650489807128906,
+      "completion_span_ms": 227.6930809020996
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 181,
+        "p50_ms": 11.224175,
+        "p95_ms": 18.329385,
+        "max_ms": 25.085784,
+        "configured_per_min": 180,
+        "started": 181,
+        "completed": 181,
+        "status": {
+          "200": 181
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0166666666666666,
+        "completed_rps": 3.0166666666666666,
+        "arrival_span_ms": 59963.23895454407,
+        "completion_span_ms": 59972.776889801025,
+        "observed_start_rps": 3.001839179108577,
+        "observed_completion_rps": 3.018036005446012
+      },
+      "meal": {
+        "n": 105,
+        "p50_ms": 32.007873,
+        "p95_ms": 54.711855,
+        "max_ms": 77.587043,
+        "configured_per_min": 105,
+        "started": 105,
+        "completed": 105,
+        "status": {
+          "201": 105
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.75,
+        "completed_rps": 1.75,
+        "arrival_span_ms": 59391.005992889404,
+        "completion_span_ms": 59412.375926971436,
+        "observed_start_rps": 1.7511068933981588,
+        "observed_completion_rps": 1.7673085508154733
+      },
+      "workout": {
+        "n": 20,
+        "p50_ms": 30.58745,
+        "p95_ms": 54.414729,
+        "max_ms": 61.800461,
+        "configured_per_min": 20,
+        "started": 20,
+        "completed": 20,
+        "status": {
+          "201": 20
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.3333333333333333,
+        "completed_rps": 0.3333333333333333,
+        "arrival_span_ms": 56963.51599693298,
+        "completion_span_ms": 56993.980884552,
+        "observed_start_rps": 0.33354682672718083,
+        "observed_completion_rps": 0.3509142490066161
+      }
+    },
+    "events": {
+      "handlers": {
+        "growth.badge-award-on-meal-recorded": {
+          "published": 105,
+          "processed": 105
+        },
+        "growth.badge-award-on-workout-completed": {
+          "published": 20,
+          "processed": 20
+        }
+      },
+      "samples": 77,
+      "sampling_max_gap_s": 1.036413,
+      "sampling_errors": [],
+      "peak_pending_sampled": 1,
+      "oldest_pending_sampled_ms": 83.76,
+      "pending_at_stop": 0,
+      "pending_after_drain": 0
+    }
+  },
+  {
+    "run": "r1-before-1ms",
+    "latency_ms_per_direction": 1,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 3.443000001425389,
+      "p95_ms": 3.8901000007172115,
+      "max_ms": 4.059200000483543
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 66.55749999845284,
+      "p95_ms": 76.72330000059446,
+      "max_ms": 83.34470000045258
+    },
+    "single_db": {
+      "isolated_requests": 100,
+      "excluded_background_requests": 0,
+      "sql_statements_per_request": 18.72,
+      "sql_selects_per_request": 13.72,
+      "sql_statements_by_verb": {
+        "SET": 400,
+        "SELECT": 1372,
+        "COMMIT": 100
+      },
+      "sql_server_ms_per_request": 3.460337869999999,
+      "select_server_ms_per_request": 3.048179509999999,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.14047906000000002,
+      "hikari_usage_ms_per_request": 60.03
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 389.593132,
+      "p95_ms": 571.167853,
+      "max_ms": 580.665924,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 1.146078109741211,
+      "completion_span_ms": 583.0721855163574
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 181,
+        "p50_ms": 60.484542,
+        "p95_ms": 67.44284,
+        "max_ms": 84.548787,
+        "configured_per_min": 180,
+        "started": 181,
+        "completed": 181,
+        "status": {
+          "200": 181
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0166666666666666,
+        "completed_rps": 3.0166666666666666,
+        "arrival_span_ms": 60235.790967941284,
+        "completion_span_ms": 60293.96891593933,
+        "observed_start_rps": 2.988256601391682,
+        "observed_completion_rps": 3.001958624623744
+      },
+      "meal": {
+        "n": 106,
+        "p50_ms": 96.350907,
+        "p95_ms": 154.695802,
+        "max_ms": 167.845718,
+        "configured_per_min": 105,
+        "started": 106,
+        "completed": 106,
+        "status": {
+          "201": 106
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.7666666666666666,
+        "completed_rps": 1.7666666666666666,
+        "arrival_span_ms": 60235.93091964722,
+        "completion_span_ms": 60317.17896461487,
+        "observed_start_rps": 1.7431456341243667,
+        "observed_completion_rps": 1.757376618395648
+      },
+      "workout": {
+        "n": 21,
+        "p50_ms": 119.61628,
+        "p95_ms": 156.111407,
+        "max_ms": 157.13607,
+        "configured_per_min": 20,
+        "started": 21,
+        "completed": 21,
+        "status": {
+          "201": 21
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.35,
+        "completed_rps": 0.35,
+        "arrival_span_ms": 60235.92305183411,
+        "completion_span_ms": 60382.39002227783,
+        "observed_start_rps": 0.33202778320155624,
+        "observed_completion_rps": 0.34778351754960574
+      }
+    },
+    "events": null
+  },
+  {
+    "run": "r1-after-1ms",
+    "latency_ms_per_direction": 1,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 3.0508999989251606,
+      "p95_ms": 3.319200000987621,
+      "max_ms": 3.448499999649357
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 43.510800001968164,
+      "p95_ms": 50.85519999920507,
+      "max_ms": 57.87640000198735
+    },
+    "single_db": {
+      "isolated_requests": 60,
+      "excluded_background_requests": 40,
+      "sql_statements_per_request": 12.0,
+      "sql_selects_per_request": 7.0,
+      "sql_statements_by_verb": {
+        "SET": 240,
+        "SELECT": 420,
+        "COMMIT": 60
+      },
+      "sql_server_ms_per_request": 1.8003681833333336,
+      "select_server_ms_per_request": 1.3878232333333336,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.1382448,
+      "hikari_usage_ms_per_request": 37.51666666666665
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 149.989802,
+      "p95_ms": 231.168678,
+      "max_ms": 234.830174,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 0.7841587066650391,
+      "completion_span_ms": 236.11998558044434
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 181,
+        "p50_ms": 39.825277,
+        "p95_ms": 46.091677,
+        "max_ms": 76.515928,
+        "configured_per_min": 180,
+        "started": 181,
+        "completed": 181,
+        "status": {
+          "200": 181
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0166666666666666,
+        "completed_rps": 3.0166666666666666,
+        "arrival_span_ms": 60247.45583534241,
+        "completion_span_ms": 60285.215854644775,
+        "observed_start_rps": 2.9876780273003374,
+        "observed_completion_rps": 3.002394491485503
+      },
+      "meal": {
+        "n": 105,
+        "p50_ms": 82.210855,
+        "p95_ms": 145.398387,
+        "max_ms": 192.826292,
+        "configured_per_min": 105,
+        "started": 105,
+        "completed": 105,
+        "status": {
+          "201": 105
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.75,
+        "completed_rps": 1.75,
+        "arrival_span_ms": 59675.59003829956,
+        "completion_span_ms": 59759.411096572876,
+        "observed_start_rps": 1.742756124124675,
+        "observed_completion_rps": 1.7570454272100686
+      },
+      "workout": {
+        "n": 21,
+        "p50_ms": 93.277436,
+        "p95_ms": 100.23631,
+        "max_ms": 104.879881,
+        "configured_per_min": 20,
+        "started": 21,
+        "completed": 21,
+        "status": {
+          "201": 21
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.35,
+        "completed_rps": 0.35,
+        "arrival_span_ms": 60246.906995773315,
+        "completion_span_ms": 60337.38207817078,
+        "observed_start_rps": 0.33196724939594197,
+        "observed_completion_rps": 0.3480429424795596
+      }
+    },
+    "events": {
+      "handlers": {
+        "growth.badge-award-on-meal-recorded": {
+          "published": 105,
+          "processed": 105
+        },
+        "growth.badge-award-on-workout-completed": {
+          "published": 21,
+          "processed": 21
+        }
+      },
+      "samples": 80,
+      "sampling_max_gap_s": 0.912381,
+      "sampling_errors": [],
+      "peak_pending_sampled": 1,
+      "oldest_pending_sampled_ms": 107.246,
+      "pending_at_stop": 0,
+      "pending_after_drain": 0
+    }
+  },
+  {
+    "run": "r2-before-1ms",
+    "latency_ms_per_direction": 1,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 3.1033999985083938,
+      "p95_ms": 3.3832000008260366,
+      "max_ms": 3.543099999660626
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 68.8996999997471,
+      "p95_ms": 79.51389999652747,
+      "max_ms": 84.48269999644253
+    },
+    "single_db": {
+      "isolated_requests": 90,
+      "excluded_background_requests": 10,
+      "sql_statements_per_request": 18.57777777777778,
+      "sql_selects_per_request": 13.577777777777778,
+      "sql_statements_by_verb": {
+        "SET": 360,
+        "SELECT": 1222,
+        "COMMIT": 90
+      },
+      "sql_server_ms_per_request": 3.6217938000000003,
+      "select_server_ms_per_request": 3.1939723444444446,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.14323651111111113,
+      "hikari_usage_ms_per_request": 61.37777777777778
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 331.92434,
+      "p95_ms": 497.931967,
+      "max_ms": 512.088311,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 0.9281635284423828,
+      "completion_span_ms": 513.897180557251
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 181,
+        "p50_ms": 65.285035,
+        "p95_ms": 76.179059,
+        "max_ms": 96.952099,
+        "configured_per_min": 180,
+        "started": 181,
+        "completed": 181,
+        "status": {
+          "200": 181
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0166666666666666,
+        "completed_rps": 3.0166666666666666,
+        "arrival_span_ms": 60258.21495056152,
+        "completion_span_ms": 60319.60082054138,
+        "observed_start_rps": 2.987144576846159,
+        "observed_completion_rps": 3.000682987583065
+      },
+      "meal": {
+        "n": 106,
+        "p50_ms": 102.194413,
+        "p95_ms": 166.515235,
+        "max_ms": 182.596183,
+        "configured_per_min": 105,
+        "started": 106,
+        "completed": 106,
+        "status": {
+          "201": 106
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.7666666666666666,
+        "completed_rps": 1.7666666666666666,
+        "arrival_span_ms": 60258.233070373535,
+        "completion_span_ms": 60346.226930618286,
+        "observed_start_rps": 1.7425004791855427,
+        "observed_completion_rps": 1.7565306961422975
+      },
+      "workout": {
+        "n": 20,
+        "p50_ms": 127.356754,
+        "p95_ms": 249.058944,
+        "max_ms": 299.00219,
+        "configured_per_min": 20,
+        "started": 20,
+        "completed": 20,
+        "status": {
+          "201": 20
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.3333333333333333,
+        "completed_rps": 0.3333333333333333,
+        "arrival_span_ms": 57258.73780250549,
+        "completion_span_ms": 57430.07183074951,
+        "observed_start_rps": 0.3318270840257434,
+        "observed_completion_rps": 0.3482496079569849
+      }
+    },
+    "events": null
+  },
+  {
+    "run": "r2-after-1ms",
+    "latency_ms_per_direction": 1,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 3.054200002225116,
+      "p95_ms": 3.382999999303138,
+      "max_ms": 3.700799999933224
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 43.120800000906456,
+      "p95_ms": 47.66199999721721,
+      "max_ms": 50.18310000014026
+    },
+    "single_db": {
+      "isolated_requests": 60,
+      "excluded_background_requests": 40,
+      "sql_statements_per_request": 12.0,
+      "sql_selects_per_request": 7.0,
+      "sql_statements_by_verb": {
+        "SET": 240,
+        "SELECT": 420,
+        "COMMIT": 60
+      },
+      "sql_server_ms_per_request": 1.6302735666666666,
+      "select_server_ms_per_request": 1.2591175833333332,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.2764668416666666,
+      "hikari_usage_ms_per_request": 36.96666666666666
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 215.878014,
+      "p95_ms": 295.12714,
+      "max_ms": 295.63689,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 2.562999725341797,
+      "completion_span_ms": 297.64413833618164
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 181,
+        "p50_ms": 42.210467,
+        "p95_ms": 48.225458,
+        "max_ms": 55.972699,
+        "configured_per_min": 180,
+        "started": 181,
+        "completed": 181,
+        "status": {
+          "200": 181
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0166666666666666,
+        "completed_rps": 3.0166666666666666,
+        "arrival_span_ms": 60274.31297302246,
+        "completion_span_ms": 60316.582918167114,
+        "observed_start_rps": 2.9863467723068746,
+        "observed_completion_rps": 3.0008331248732514
+      },
+      "meal": {
+        "n": 106,
+        "p50_ms": 86.627238,
+        "p95_ms": 149.751535,
+        "max_ms": 201.942453,
+        "configured_per_min": 105,
+        "started": 106,
+        "completed": 106,
+        "status": {
+          "201": 106
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.7666666666666666,
+        "completed_rps": 1.7666666666666666,
+        "arrival_span_ms": 60273.42200279236,
+        "completion_span_ms": 60347.423791885376,
+        "observed_start_rps": 1.7420613681953472,
+        "observed_completion_rps": 1.756495859136464
+      },
+      "workout": {
+        "n": 21,
+        "p50_ms": 101.329709,
+        "p95_ms": 113.311212,
+        "max_ms": 116.587527,
+        "configured_per_min": 20,
+        "started": 21,
+        "completed": 21,
+        "status": {
+          "201": 21
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.35,
+        "completed_rps": 0.35,
+        "arrival_span_ms": 60274.22499656677,
+        "completion_span_ms": 60368.93010139465,
+        "observed_start_rps": 0.33181679235426426,
+        "observed_completion_rps": 0.34786105973269277
+      }
+    },
+    "events": {
+      "handlers": {
+        "growth.badge-award-on-meal-recorded": {
+          "published": 106,
+          "processed": 106
+        },
+        "growth.badge-award-on-workout-completed": {
+          "published": 21,
+          "processed": 21
+        }
+      },
+      "samples": 78,
+      "sampling_max_gap_s": 0.965305,
+      "sampling_errors": [],
+      "peak_pending_sampled": 2,
+      "oldest_pending_sampled_ms": 128.647,
+      "pending_at_stop": 0,
+      "pending_after_drain": 0
+    }
+  },
+  {
+    "run": "r1-before-2ms",
+    "latency_ms_per_direction": 2,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 5.808199999592034,
+      "p95_ms": 6.1789999999746215,
+      "max_ms": 6.812100000388455
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 111.90900000292459,
+      "p95_ms": 145.48350000040955,
+      "max_ms": 167.40979999667616
+    },
+    "single_db": {
+      "isolated_requests": 100,
+      "excluded_background_requests": 0,
+      "sql_statements_per_request": 18.72,
+      "sql_selects_per_request": 13.72,
+      "sql_statements_by_verb": {
+        "SET": 400,
+        "SELECT": 1372,
+        "COMMIT": 100
+      },
+      "sql_server_ms_per_request": 4.618425079999998,
+      "select_server_ms_per_request": 4.031047969999998,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.28279656,
+      "hikari_usage_ms_per_request": 108.96
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 504.345974,
+      "p95_ms": 736.013373,
+      "max_ms": 756.692108,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 0.7610321044921875,
+      "completion_span_ms": 758.1360340118408
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 181,
+        "p50_ms": 105.88208,
+        "p95_ms": 119.494678,
+        "max_ms": 233.132346,
+        "configured_per_min": 180,
+        "started": 181,
+        "completed": 181,
+        "status": {
+          "200": 181
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0166666666666666,
+        "completed_rps": 3.0166666666666666,
+        "arrival_span_ms": 60252.99787521362,
+        "completion_span_ms": 60357.975006103516,
+        "observed_start_rps": 2.9874032222062583,
+        "observed_completion_rps": 2.9987752236833147
+      },
+      "meal": {
+        "n": 106,
+        "p50_ms": 157.478631,
+        "p95_ms": 250.623351,
+        "max_ms": 273.092348,
+        "configured_per_min": 105,
+        "started": 106,
+        "completed": 106,
+        "status": {
+          "201": 106
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.7666666666666666,
+        "completed_rps": 1.7666666666666666,
+        "arrival_span_ms": 60252.66981124878,
+        "completion_span_ms": 60389.3928527832,
+        "observed_start_rps": 1.742661368017873,
+        "observed_completion_rps": 1.7552751400963078
+      },
+      "workout": {
+        "n": 20,
+        "p50_ms": 194.453926,
+        "p95_ms": 278.02921,
+        "max_ms": 282.005968,
+        "configured_per_min": 20,
+        "started": 20,
+        "completed": 20,
+        "status": {
+          "201": 20
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.3333333333333333,
+        "completed_rps": 0.3333333333333333,
+        "arrival_span_ms": 57253.32593917847,
+        "completion_span_ms": 57513.922929763794,
+        "observed_start_rps": 0.33185844993850905,
+        "observed_completion_rps": 0.3477418854635263
+      }
+    },
+    "events": null
+  },
+  {
+    "run": "r1-after-2ms",
+    "latency_ms_per_direction": 2,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 5.871400000614813,
+      "p95_ms": 6.304799997451482,
+      "max_ms": 7.0846999988134485
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 70.43220000196015,
+      "p95_ms": 78.32710000002407,
+      "max_ms": 85.68880000166246
+    },
+    "single_db": {
+      "isolated_requests": 80,
+      "excluded_background_requests": 20,
+      "sql_statements_per_request": 12.0,
+      "sql_selects_per_request": 7.0,
+      "sql_statements_by_verb": {
+        "SET": 320,
+        "SELECT": 560,
+        "COMMIT": 80
+      },
+      "sql_server_ms_per_request": 2.0189106624999997,
+      "select_server_ms_per_request": 1.5397140999999999,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.231085275,
+      "hikari_usage_ms_per_request": 64.15
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 241.576603,
+      "p95_ms": 378.568043,
+      "max_ms": 385.64109,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 1.583099365234375,
+      "completion_span_ms": 388.51308822631836
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 181,
+        "p50_ms": 70.103183,
+        "p95_ms": 78.554721,
+        "max_ms": 196.18971,
+        "configured_per_min": 180,
+        "started": 181,
+        "completed": 181,
+        "status": {
+          "200": 181
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0166666666666666,
+        "completed_rps": 3.0166666666666666,
+        "arrival_span_ms": 60247.11489677429,
+        "completion_span_ms": 60313.2050037384,
+        "observed_start_rps": 2.98769493457748,
+        "observed_completion_rps": 3.001001190183494
+      },
+      "meal": {
+        "n": 105,
+        "p50_ms": 131.732126,
+        "p95_ms": 232.476414,
+        "max_ms": 266.14343,
+        "configured_per_min": 105,
+        "started": 105,
+        "completed": 105,
+        "status": {
+          "201": 105
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.75,
+        "completed_rps": 1.75,
+        "arrival_span_ms": 59675.9991645813,
+        "completion_span_ms": 59798.6102104187,
+        "observed_start_rps": 1.742744176149894,
+        "observed_completion_rps": 1.7558936508813021
+      },
+      "workout": {
+        "n": 21,
+        "p50_ms": 163.295664,
+        "p95_ms": 175.147448,
+        "max_ms": 179.268425,
+        "configured_per_min": 20,
+        "started": 21,
+        "completed": 21,
+        "status": {
+          "201": 21
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.35,
+        "completed_rps": 0.35,
+        "arrival_span_ms": 60246.86408042908,
+        "completion_span_ms": 60398.00310134888,
+        "observed_start_rps": 0.33196748586449515,
+        "observed_completion_rps": 0.34769361438592006
+      }
+    },
+    "events": {
+      "handlers": {
+        "growth.badge-award-on-meal-recorded": {
+          "published": 105,
+          "processed": 105
+        },
+        "growth.badge-award-on-workout-completed": {
+          "published": 21,
+          "processed": 21
+        }
+      },
+      "samples": 80,
+      "sampling_max_gap_s": 0.950738,
+      "sampling_errors": [],
+      "peak_pending_sampled": 2,
+      "oldest_pending_sampled_ms": 214.673,
+      "pending_at_stop": 0,
+      "pending_after_drain": 0
+    }
+  },
+  {
+    "run": "r2-before-2ms",
+    "latency_ms_per_direction": 2,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 5.680300000676652,
+      "p95_ms": 6.261800001084339,
+      "max_ms": 6.924199999048142
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 107.71510000267881,
+      "p95_ms": 123.81669999740552,
+      "max_ms": 131.9261999997252
+    },
+    "single_db": {
+      "isolated_requests": 100,
+      "excluded_background_requests": 0,
+      "sql_statements_per_request": 18.72,
+      "sql_selects_per_request": 13.72,
+      "sql_statements_by_verb": {
+        "SET": 400,
+        "SELECT": 1372,
+        "COMMIT": 100
+      },
+      "sql_server_ms_per_request": 3.8652070800000002,
+      "select_server_ms_per_request": 3.40006143,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.24358729999999998,
+      "hikari_usage_ms_per_request": 103.81
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 386.860741,
+      "p95_ms": 618.813102,
+      "max_ms": 652.479103,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 0.6568431854248047,
+      "completion_span_ms": 653.5959243774414
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 180,
+        "p50_ms": 105.376589,
+        "p95_ms": 118.734134,
+        "max_ms": 125.900547,
+        "configured_per_min": 180,
+        "started": 180,
+        "completed": 180,
+        "status": {
+          "200": 180
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0,
+        "completed_rps": 3.0,
+        "arrival_span_ms": 59892.57502555847,
+        "completion_span_ms": 59994.1201210022,
+        "observed_start_rps": 2.9886843222822495,
+        "observed_completion_rps": 3.000294022763528
+      },
+      "meal": {
+        "n": 106,
+        "p50_ms": 158.362372,
+        "p95_ms": 254.775463,
+        "max_ms": 335.227241,
+        "configured_per_min": 105,
+        "started": 106,
+        "completed": 106,
+        "status": {
+          "201": 106
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.7666666666666666,
+        "completed_rps": 1.7666666666666666,
+        "arrival_span_ms": 60225.64697265625,
+        "completion_span_ms": 60383.13603401184,
+        "observed_start_rps": 1.7434432883331628,
+        "observed_completion_rps": 1.7554570193289345
+      },
+      "workout": {
+        "n": 21,
+        "p50_ms": 197.869691,
+        "p95_ms": 267.0178,
+        "max_ms": 278.030445,
+        "configured_per_min": 20,
+        "started": 21,
+        "completed": 21,
+        "status": {
+          "201": 21
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.35,
+        "completed_rps": 0.35,
+        "arrival_span_ms": 60225.02303123474,
+        "completion_span_ms": 60478.79719734192,
+        "observed_start_rps": 0.3320878763238882,
+        "observed_completion_rps": 0.3472291277797265
+      }
+    },
+    "events": null
+  },
+  {
+    "run": "r2-after-2ms",
+    "latency_ms_per_direction": 2,
+    "sql_rtt": {
+      "n": 60,
+      "p50_ms": 5.220099999860395,
+      "p95_ms": 5.503200001840014,
+      "max_ms": 6.094899999879999
+    },
+    "single_http": {
+      "n": 100,
+      "p50_ms": 70.02929999725893,
+      "p95_ms": 80.30669999789097,
+      "max_ms": 90.69150000141235
+    },
+    "single_db": {
+      "isolated_requests": 50,
+      "excluded_background_requests": 50,
+      "sql_statements_per_request": 12.0,
+      "sql_selects_per_request": 7.0,
+      "sql_statements_by_verb": {
+        "SET": 200,
+        "SELECT": 350,
+        "COMMIT": 50
+      },
+      "sql_server_ms_per_request": 1.92075188,
+      "select_server_ms_per_request": 1.47501814,
+      "hikari_acquisitions_per_request": 2.0,
+      "hikari_avg_acquire_ms": 0.2639915599999999,
+      "hikari_usage_ms_per_request": 63.43999999999999
+    },
+    "burst_http": {
+      "n": 50,
+      "p50_ms": 265.014228,
+      "p95_ms": 399.10419,
+      "max_ms": 405.973861,
+      "configured_per_min": null,
+      "started": 50,
+      "completed": 50,
+      "status": {
+        "200": 50
+      },
+      "failures": 0,
+      "failure_rate": 0.0,
+      "timeouts": 0,
+      "dropped": 0,
+      "start_rps": null,
+      "completed_rps": null,
+      "arrival_span_ms": 0.7441043853759766,
+      "completion_span_ms": 407.9761505126953
+    },
+    "mixed_http": {
+      "growth": {
+        "n": 180,
+        "p50_ms": 71.078667,
+        "p95_ms": 80.589366,
+        "max_ms": 89.091571,
+        "configured_per_min": 180,
+        "started": 180,
+        "completed": 180,
+        "status": {
+          "200": 180
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 3.0,
+        "completed_rps": 3.0,
+        "arrival_span_ms": 59934.00311470032,
+        "completion_span_ms": 60006.06298446655,
+        "observed_start_rps": 2.986618458597433,
+        "observed_completion_rps": 2.9996968814067277
+      },
+      "meal": {
+        "n": 105,
+        "p50_ms": 133.276198,
+        "p95_ms": 232.301344,
+        "max_ms": 274.670569,
+        "configured_per_min": 105,
+        "started": 105,
+        "completed": 105,
+        "status": {
+          "201": 105
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 1.75,
+        "completed_rps": 1.75,
+        "arrival_span_ms": 59696.14887237549,
+        "completion_span_ms": 59826.642990112305,
+        "observed_start_rps": 1.7421559340844885,
+        "observed_completion_rps": 1.7550708973818505
+      },
+      "workout": {
+        "n": 21,
+        "p50_ms": 162.18459,
+        "p95_ms": 177.200655,
+        "max_ms": 177.393225,
+        "configured_per_min": 20,
+        "started": 21,
+        "completed": 21,
+        "status": {
+          "201": 21
+        },
+        "failures": 0,
+        "failure_rate": 0.0,
+        "timeouts": 0,
+        "dropped": 0,
+        "start_rps": 0.35,
+        "completed_rps": 0.35,
+        "arrival_span_ms": 60267.39501953125,
+        "completion_span_ms": 60426.35488510132,
+        "observed_start_rps": 0.33185439645298204,
+        "observed_completion_rps": 0.3475304780493676
+      }
+    },
+    "events": {
+      "handlers": {
+        "growth.badge-award-on-meal-recorded": {
+          "published": 105,
+          "processed": 105
+        },
+        "growth.badge-award-on-workout-completed": {
+          "published": 21,
+          "processed": 21
+        }
+      },
+      "samples": 80,
+      "sampling_max_gap_s": 0.950837,
+      "sampling_errors": [],
+      "peak_pending_sampled": 2,
+      "oldest_pending_sampled_ms": 205.908,
+      "pending_at_stop": 0,
+      "pending_after_drain": 0
+    }
+  }
+]</script>
+<script>
+const data=JSON.parse(document.getElementById('measurement-data').textContent);
+const fmt=n=>n.toFixed(1), range=a=>{const lo=Math.min(...a),hi=Math.max(...a);return Math.abs(lo-hi)<.05?fmt(lo):`${fmt(lo)}–${fmt(hi)}`};
+const group=(delay,version)=>data.filter(d=>d.latency_ms_per_direction===delay&&d.run.includes(`-${version}-`));
+const pairs=[];for(const delay of [0,1,2])for(const r of [1,2]){const b=data.find(d=>d.run===`r${r}-before-${delay}ms`),a=data.find(d=>d.run===`r${r}-after-${delay}ms`);pairs.push({delay,r,b,a});}
+const improvements=mode=>pairs.map(p=>(1-p.a[mode].p95_ms/p.b[mode].p95_ms)*100);
+document.getElementById('single-improvement').textContent=`${Math.round(Math.min(...improvements('single_http')))}~${Math.round(Math.max(...improvements('single_http')))}%`;
+const mixedCount=data.reduce((s,d)=>s+Object.values(d.mixed_http).reduce((n,x)=>n+x.n,0),0);
+document.getElementById('mixed-total').textContent=`${mixedCount.toLocaleString('ko-KR')}건 성공`;
+const totals=data.filter(d=>d.events).reduce((s,d)=>{for(const h of Object.values(d.events.handlers)){s.p+=h.published;s.c+=h.processed}return s},{p:0,c:0});document.getElementById('event-total').textContent=`${totals.c} / ${totals.p}건`;
+document.getElementById('latency-rows').innerHTML=[0,1,2].map(delay=>{const b=group(delay,'before'),a=group(delay,'after');const vals=(set,key,field)=>set.map(d=>d[key][field]);return `<tr><td>${delay}ms</td><td class="num">${range([...b,...a].map(d=>d.sql_rtt.p50_ms))}</td><td class="num">${range(vals(b,'single_http','p95_ms'))} → ${range(vals(a,'single_http','p95_ms'))}</td><td class="num">${range(vals(b,'burst_http','p95_ms'))} → ${range(vals(a,'burst_http','p95_ms'))}</td><td class="num">${range(vals(b,'burst_http','completion_span_ms'))} → ${range(vals(a,'burst_http','completion_span_ms'))}</td></tr>`}).join('');
+document.getElementById('mixed-rows').innerHTML=[0,1,2].map(delay=>{const b=group(delay,'before'),a=group(delay,'after');return `<tr><td>${delay}ms</td>${['growth','meal','workout'].map(api=>`<td class="num">${range(b.map(d=>d.mixed_http[api].p95_ms))} → ${range(a.map(d=>d.mixed_http[api].p95_ms))}</td>`).join('')}</tr>`}).join('');
+document.getElementById('raw-rows').innerHTML=data.map(d=>`<tr><td><code>${d.run}</code></td><td class="num">${fmt(d.single_http.p95_ms)}</td><td class="num">${fmt(d.burst_http.p95_ms)}</td><td class="num">${fmt(d.mixed_http.meal.p95_ms)}</td><td class="num">${fmt(d.mixed_http.workout.p95_ms)}</td><td class="num">${fmt(d.single_db.hikari_acquisitions_per_request)}</td></tr>`).join('');
+function draw(mode){const max=Math.ceil(Math.max(...data.map(d=>d[mode].p95_ms))/50)*50,left=58,right=900,top=32,bottom=254,h=bottom-top;let s=`<title>${mode==='single_http'?'순차 성장 조회':'50건 몰림'} 실행별 p95 비교</title><desc>전환 전후 6쌍을 비교합니다. 단위는 밀리초이며 막대 위에 실제 값이 표시됩니다.</desc>`;for(let i=0;i<=4;i++){const v=max*i/4,y=bottom-h*i/4;s+=`<line x1="${left}" x2="${right}" y1="${y}" y2="${y}" stroke="#dce4ec"/><text x="${left-10}" y="${y+4}" text-anchor="end" fill="#56667a" font-size="12">${Math.round(v)}</text>`}s+='<text x="18" y="18" fill="#56667a" font-size="12">ms</text>';pairs.forEach((p,i)=>{const center=left+75+i*137;[p.b,p.a].forEach((d,j)=>{const v=d[mode].p95_ms,x=center+(j===0?-29:5),y=bottom-v/max*h;s+=`<rect x="${x}" y="${y}" width="27" height="${bottom-y}" rx="3" fill="${j===0?'#7c6c97':'#167775'}"/><text x="${x+13.5}" y="${y-8}" text-anchor="middle" fill="#182b42" font-size="12">${fmt(v)}</text>`});s+=`<text x="${center+1}" y="277" text-anchor="middle" fill="#56667a" font-size="12">반복 ${p.r}</text>`;if(i%2===0)s+=`<text x="${center+69}" y="309" text-anchor="middle" fill="#182b42" font-size="14" font-weight="700">방향별 ${p.delay}ms</text>`;if(i===1||i===3)s+=`<line x1="${center+68}" x2="${center+68}" y1="25" y2="285" stroke="#dce4ec" stroke-dasharray="3 5"/>`});document.getElementById('chart').innerHTML=s;const imp=improvements(mode);document.getElementById('chart-summary').textContent=`${mode==='single_http'?'순차 조회':'50건 몰림'} p95는 짝지은 6개 비교 모두 감소했습니다. 실행별 감소율은 ${fmt(Math.min(...imp))}~${fmt(Math.max(...imp))}%입니다.`;document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)))}
+document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>draw(b.dataset.mode)));draw('single_http');
+</script>
+</body></html>
